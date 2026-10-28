@@ -6,6 +6,8 @@ KoeSub is a working Windows/PySide6 prototype. The current focus is Japanese sou
 
 - Whisper Large V3 + VAD is the default Japanese baseline.
 - Suspicious intervals can be decoded again with Large V3 and an auxiliary model, normally Kotoba.
+- Source review v3 groups retry clips by model and can send only unresolved windows to a third decoder, normally Qwen3-ASR JA Anime/Galgame, with a separate clip limit.
+- Optional Japanese scene-context review flags words, names and continuity concerns and recommends existing ASR alternatives. These recommendations require listening and do not automatically rewrite dialogue.
 - Phrase review runs before translation. Corroborated local edits preserve baseline timestamps; unresolved differences remain visible for listening.
 - The editor supports playback, waveforms, persistent projects, manual comparison, annotations, undo/redo, and multiple export formats.
 - Optional translation and semantic review use local GGUF models, with an embedded runtime preferred and LM Studio secondary.
@@ -16,7 +18,7 @@ KoeSub is a working Windows/PySide6 prototype. The current focus is Japanese sou
 
 Source review v2 adds a full auxiliary disagreement scan, protects earlier retry priority, reuses complete scan cues where appropriate, and supports saved human phrase choices with undo. Ten additional clips moved from 67/664 to 65/664 reference edits, primarily from spelling; semantic improvement was not demonstrated. The movie regression fix preserves the two earlier edits. Extra coverage costs more processing time. See [ASR_SCAN_REVIEW_V2.md](ASR_SCAN_REVIEW_V2.md).
 
-The current suite has **191 passing tests**, including a clean source snapshot without developer data or models. Hardware experiments use separately prepared assets; they are not part of the unit-test suite.
+The current suite has **208 passing tests**, also verified on a clean source-only copy without developer data or models. Hardware experiments use separately prepared assets; they are not part of the unit-test suite. Source review v3 behavior, fresh CUDA timing comparisons, and reference checks are documented in [SOURCE_REVIEW_V3.md](SOURCE_REVIEW_V3.md).
 
 An earlier ten-clip CUDA benchmark compared five models, production review, and evaluation-only reference-guided selection across the existing MCDC core and five newly acquired FLEURS read-speech recordings. Baseline and production both had 31/645 character edits (4.81% CER); constrained oracle selection reached 21/645 (3.26%). Production applied no phrase changes. This identifies missed targeting/selection opportunities, not a measured improvement in the shipping review. See [ASR_FUSION_BENCHMARK.md](ASR_FUSION_BENCHMARK.md).
 
@@ -26,6 +28,6 @@ Earlier experiments showed that a faster auxiliary ASR can be less accurate than
 
 ## Open work
 
-Improve transcript selection using independently checked references, reduce ASR reload costs, and evaluate additional recordings and speakers. Translation quality, speaker perspective, terminology, audio-based retiming, voice separation, batch processing, English UI localization, and a packaged Windows executable remain areas for further work. Automatic cache-size limits and an in-app GPU/RAM telemetry panel are not implemented.
+Improve transcript selection using independently checked references and evaluate additional recordings and speakers. Grouped retry inference reduces reload costs; full-recording ASR and auxiliary scans still use separate native runs. Translation quality, speaker perspective, terminology, audio-based retiming, voice separation, multi-file project queues, English UI localization, and a packaged Windows executable remain areas for further work. Automatic cache-size limits and an in-app GPU/RAM telemetry panel are not implemented.
 
 The project previously used the working title AI Subtitle Studio. The Python package and existing local receipt names remain compatible with earlier installations.

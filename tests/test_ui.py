@@ -223,8 +223,22 @@ def test_jp_scope_needs_no_translator_and_fixes_baseline_vad(window,tmp_path):
     assert config['transcription_only'] and config['translations']==[] and not config['llm_keep_loaded']
     assert config['asr'][0]['model']==str(base) and config['asr'][0]['vad']
     assert config['retry_asr']['auxiliary']['model']==str(aux)
-    assert config['source_review_version']==2 and config['retry_asr']['scan_first']
+    assert config['source_review_version']==3 and config['retry_asr']['scan_first']
+    assert config['retry_asr']['batch_retries'] and not config['jp_context_review']
     assert [s['id'] for s in plan(config)]==['audio','asr-0','asr-scan','asr-retry','jp-review','jp-layout','jp-export']
+
+
+def test_third_asr_default_and_explicit_disabled_survive_model_refresh(window,tmp_path):
+    from studio.storage import Model
+    w,_=window
+    paths=[tmp_path/name for name in ('ggml-large-v3.bin','ggml-kotoba-whisper.bin','qwen3-asr-1.7b-ja-anime.gguf')]
+    for path in paths:path.write_bytes(b'model')
+    w.settings.crisp_exe=sys.executable
+    w.models=[Model(p.name,str(p),'Whisper / GGML' if p.suffix=='.bin' else 'Qwen ASR',5) for p in paths]
+    panel=w.pipeline_panel;panel.refresh_models()
+    assert panel.retry_third.currentData()['engine']==1
+    panel.retry_third.setCurrentIndex(0);panel.refresh_models()
+    assert panel.retry_third.currentData() is None
 
 
 def test_retry_comparison_dialog_keeps_alternatives_and_plays_range(window,tmp_path,app):

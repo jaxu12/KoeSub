@@ -56,6 +56,8 @@ def plan(config):
             stages.append(('asr-retry','Podejrzane wycinki • ponowienie Large V3 i model pomocniczy'))
         if config.get('source_review_version'):
             stages.append(('jp-review','Review oryginału JP • porównanie i składanie fraz'))
+        if config.get('jp_context_review'):
+            stages.append(('jp-context','Japanese scene context • words, names and ASR recommendations'))
         stages.extend([('jp-layout','Układ napisów JP'),('jp-export','Eksport JP i raport wycinków')])
         return [{'id':key,'label':label,'status':'pending'} for key,label in stages]
     stages = [('audio','Przygotowanie audio')]
@@ -81,7 +83,7 @@ def plan(config):
 
 
 def validate_config(config):
-    if config.get('source_review_version') not in (None,1,2):
+    if config.get('source_review_version') not in (None,1,2,3):
         raise ValueError('Nieobsługiwana wersja review oryginału JP.')
     jp_only=config.get('transcription_only',False)
     if jp_only:
@@ -90,9 +92,23 @@ def validate_config(config):
         if config['translations']: raise ValueError('Tryb JP nie uruchamia tłumaczenia.')
         options=config.get('retry_asr',{})
         if type(options.get('scan_first',False)) is not bool: raise ValueError('Invalid auxiliary scan option')
+        if type(options.get('batch_retries',False)) is not bool: raise ValueError('Invalid grouped retry option')
+        if (options.get('third') or options.get('batch_retries')) and config.get('source_review_version')!=3:
+            raise ValueError('Third ASR and grouped retries require source review v3')
+        if options.get('third'):
+            models=[config['asr'][0],options.get('auxiliary'),options['third']]
+            if any(not m or m['engine'] not in (1,2,3) for m in models): raise ValueError('Three distinct local CrispASR models are required')
+            identities=[str(Path(m['model']).resolve()).casefold() for m in models]
+            if len(set(identities))!=3: raise ValueError('Third ASR must use distinct model weights')
+        value=options.get('third_max_targets',6)
+        if type(value) is not int or not 1<=value<=30: raise ValueError('Invalid third ASR window limit')
         for key,low,high,default in [('padding_ms',1000,10000,3000),('max_window_ms',5000,60000,30000),('max_targets',1,30,12)]:
             value=options.get(key,default)
             if type(value) is not int or not low<=value<=high: raise ValueError('Nieprawidłowy limit ponowień: '+key)
+    if type(config.get('jp_context_review',False)) is not bool: raise ValueError('Invalid JP context review option')
+    if config.get('jp_context_review') and (not jp_only or not config.get('source_review_version') or not config.get('judge_model')):
+        raise ValueError('JP context review requires source review and a local review model')
+    if config.get('source_review_version')==3 and not jp_only: raise ValueError('Source review v3 is a transcription-only workflow')
     if config.get('asr_failure_policy','stop') not in {'stop','continue'}:
         raise ValueError('Nieprawidłowa polityka błędów ASR.')
     if type(config.get('decision_batch_size',1)) is not int or not 1<=config.get('decision_batch_size',1)<=6:
@@ -131,9 +147,14 @@ def asset_identities(config):
             paths.append(settings['crisp_aligner'])
     if config.get('transcription_only'):
         auxiliary=config.get('retry_asr',{}).get('auxiliary')
-        if config.get('retry_asr',{}).get('enabled') and auxiliary:
-            paths.append(auxiliary['model'])
-            if auxiliary['engine'] in (1,2):paths.append(settings['crisp_aligner'])
+        if config.get('retry_asr',{}).get('enabled'):
+            for item in (auxiliary,config.get('retry_asr',{}).get('third')):
+                if item:
+                    paths.append(item['model'])
+                    if item['engine'] in (1,2):paths.append(settings['crisp_aligner'])
+        if config.get('jp_context_review') and config['backend']=='embedded':
+            paths += [settings['llm_exe'],config['judge_model']]
+            if config.get('llm_keep_loaded'): paths.append(str(Path(settings['llm_exe']).with_name('llama-server.exe')))
         return [file_identity(path) for path in sorted(set(paths))]
     if config['backend']=='embedded':
         paths += [settings['llm_exe'],config['judge_model']]

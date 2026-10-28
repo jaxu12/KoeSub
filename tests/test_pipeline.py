@@ -609,3 +609,63 @@ def test_invalid_utf8_asr_is_a_quality_rejection_not_a_silent_recode(config,tmp_
     monkeypatch.setattr(runner,'call',call)
     item={**config['asr'][0],'engine':0}
     with pytest.raises(AsrQualityError,match='uszkodzony tekst'):runner.asr(folder,item,'source.wav')
+
+
+@pytest.mark.parametrize('agree',[False,True])
+@pytest.mark.parametrize('quality',[False,True])
+def test_v3_grouped_pipeline_third_only_when_unresolved_and_resume(config,tmp_path,monkeypatch,agree,quality):
+    from tests.test_asr_review import example
+    from studio import source_review_v3
+    base,window,scores=example();auxiliary={**config['asr'][1],'vad':True}
+    third_model=tmp_path/'third.gguf';third_model.write_bytes(b'GGUF fixture')
+    third={**auxiliary,'name':'Third','model':str(third_model)}
+    config['asr']=[{**config['asr'][0],'vad':True}]
+    config['settings'].update(crisp_vad=config['media'],crisp_aligner=config['media'])
+    config.update(transcription_only=True,source_review_version=3,translations=[],
+        retry_asr={'enabled':True,'auxiliary':auxiliary,'third':third,'third_max_targets':1,'batch_retries':True})
+    monkeypatch.setattr(PipelineRunner,'audio',lambda *a:{'audio':config['media']})
+    monkeypatch.setattr(PipelineRunner,'asr',lambda *a:{'track':asdict(base),'confidence':scores})
+    monkeypatch.setattr(PipelineRunner,'call',lambda self,args,*a:Path(args[-1]).write_bytes(b'audio'))
+    calls=[]
+    def batch(runner,root,item,jobs):
+        calls.append(item['name']);index=0 if item['name'] in ('Whisper','Third') or agree else 1
+        value={'usable':False,'error':'bad clip alignment'} if quality and item['name']=='Qwen' else copy.deepcopy(window['attempts'][index])
+        value.update(model=item['model'],name=item['name'],seconds=1)
+        return [copy.deepcopy(value) for j in jobs]
+    monkeypatch.setattr(source_review_v3,'decode_batch',batch)
+    create_run(config,tmp_path/'run');manifest=tmp_path/'run/manifest.json'
+    run_pipeline(manifest,lambda *a,**kw:None)
+    assert calls==(['Whisper','Qwen'] if agree and not quality else ['Whisper','Qwen','Third'])
+    state=load_run(manifest);assert state['jp_third_windows']==(0 if agree and not quality else 1)
+    if quality:
+        report=read_json(Path(config['output_dir'])/'report.json')
+        assert report['status']=='needs_review' and report['asr_failures'][0]['name']=='Qwen'
+        assert report['asr_failures'][0]['reason']=='bad clip alignment'
+    final=read_json(tmp_path/'run/jp-layout/result.json')['track']
+    assert [(s['start'],s['end']) for s in final['segments']]==[(s.start,s.end) for s in base.segments]
+    calls.clear();run_pipeline(manifest,lambda *a,**kw:None);assert not calls
+    # Simulate a stop after native retries but before stage completion.
+    state=load_run(manifest)
+    for stage in state['stages']:
+        if stage['id'] in ('asr-retry','jp-review','jp-layout','jp-export'):stage['status']='pending'
+    write_json(manifest,state);run_pipeline(manifest,lambda *a,**kw:None);assert not calls
+    receipt=next((tmp_path/'run/asr-retry').glob('*/attempt-0/result.json'))
+    value=read_json(receipt);value['result']['usable']=False;write_json(receipt,value)
+    state=load_run(manifest)
+    next(s for s in state['stages'] if s['id']=='asr-retry')['status']='pending';write_json(manifest,state)
+    with pytest.raises(ValueError,match='receipt'):run_pipeline(manifest,lambda *a,**kw:None)
+
+
+def test_v3_validation_and_context_assets_preserve_old_jp_no_llm(config,tmp_path):
+    from studio.pipeline import asset_identities
+    auxiliary=config['asr'][1];config['asr']=[{**config['asr'][0],'vad':True}]
+    config['settings'].update(crisp_vad=config['media'],crisp_aligner=config['media'])
+    config.update(transcription_only=True,source_review_version=3,translations=[],
+                  retry_asr={'enabled':True,'auxiliary':auxiliary,'third':auxiliary})
+    with pytest.raises(ValueError,match='distinct model'):validate_config(config)
+    config['retry_asr']['third']=None
+    old=asset_identities(config)
+    assert str(Path(config['judge_model']).resolve()) not in {a['path'] for a in old}
+    config['jp_context_review']=True
+    assert str(Path(config['judge_model']).resolve()) in {a['path'] for a in asset_identities(config)}
+    assert [s['id'] for s in plan(config)][-3:]==['jp-context','jp-layout','jp-export']

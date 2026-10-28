@@ -11,7 +11,7 @@ import math
 from .core import normalize
 from .pipeline import clone_track
 
-VERSION = 2
+VERSION = 3
 
 
 def _surface(cues):
@@ -63,7 +63,7 @@ def _model(path):
 
 
 def review_fragments(base, windows, confidence, baseline_model,version=1):
-    if version not in (1,2): raise ValueError('Unsupported source review version')
+    if version not in (1,2,3): raise ValueError('Unsupported source review version')
     result = clone_track(base, 'Pipeline • review transkrypcji JP')
     targets = {s.parents[0]: s for s in result.segments}
     originals = {s.id: s for s in base.segments}
@@ -129,6 +129,14 @@ def review_fragments(base, windows, confidence, baseline_model,version=1):
                     and _model(candidate.get('model')) == _model(baseline_model) != ''
                     and all(a['normalized'] == candidate.get('normalized') and a['text']
                             and a['anchored'] and a['temporal'] for a in usable))
+            # Version 3 permits a third decoder to corroborate the baseline
+            # retry despite a dissenting auxiliary. Never elect an auxiliary
+            # majority against the baseline retry or relax the phrase guards.
+            if version >= 3 and len(alternatives) == 3:
+                supporters = [a for a in usable if a['normalized'] == candidate.get('normalized')
+                              and a['text'] and a['anchored'] and a['temporal']]
+                same = (candidate in supporters and _model(candidate.get('model')) == _model(baseline_model) != ''
+                        and len({_model(a['model']) for a in supporters if a['model']}) >= 2)
             reason = 'Rozbieżne lub niepełne hipotezy; zachowano bazę'
             approved = False
             if structural: reason = 'Dodanie tekstu lub zmiana przez granice napisów — wymaga odsłuchu'
@@ -154,6 +162,11 @@ def review_fragments(base, windows, confidence, baseline_model,version=1):
                       'alternatives': alternatives, 'applied': approved, 'reason': reason,
                       'context': ' '.join(s['text'] for s in before) if structural else cue.text,
                       'baseline_confidence': baseline_score}
+            if version >= 3:
+                record['supporting_models'] = [a['model'] for a in usable
+                    if a['normalized'] == candidate.get('normalized') and a['anchored'] and a['temporal']]
+                record['dissenting_models'] = [a['model'] for a in usable
+                    if a['normalized'] != candidate.get('normalized')]
             records.append(record)
             if approved: patches.setdefault(cue.id, []).append(record)
     for cue_id, changes in patches.items():
@@ -170,6 +183,13 @@ def review_fragments(base, windows, confidence, baseline_model,version=1):
     for cue_id in unresolved:
         if cue_id in targets and originals[cue_id].status != 'manual' and originals[cue_id].review_status != 'reviewed':
             targets[cue_id].notes.append('ASR: nierozstrzygnięte różnice fraz — porównaj hipotezy i odsłuchaj')
+    if version >= 3:
+        for window in windows:
+            if any(not a.get('usable') for a in window['attempts']):
+                for suspect in window.get('suspects',[]):
+                    cue_id=suspect['id']
+                    if cue_id in targets and originals[cue_id].status!='manual' and originals[cue_id].review_status!='reviewed':
+                        targets[cue_id].notes.append('ASR: an audio hypothesis failed quality checks; listen to this cue')
     return {'version': version, 'track': asdict(result), 'fragments': records,
             'changes': [r for r in records if r['applied']], 'changed_cues': len({r['cue_id'] for r in records if r['applied']}),
             'scope': 'JP source review before translation; text-only comparison of audio-derived hypotheses; agreement can be wrong'}

@@ -14,7 +14,8 @@ def main():
     args=parser.parse_args();ui.DATA=args.data_dir.resolve()
     app=QApplication([])
     app.setStyle('Fusion');app.setStyleSheet(ui.STYLE);ui.setup_fonts(app)
-    window=ui.Window();window.tabs.setCurrentWidget(window.pipeline_panel);window.show();app.processEvents()
+    window=ui.Window();window.resize(1100,850);window.tabs.setCurrentWidget(window.pipeline_panel);window.show();app.processEvents()
+    if not window.grab().save(str(ui.DATA/'pipeline-preview.png')):raise ValueError('Could not save pipeline preview')
     window.pipeline_panel.show_retry_results();app.processEvents()
     dialog=window.pipeline_panel.retry_dialog
     table=dialog.findChild(QTableWidget)

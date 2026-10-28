@@ -279,6 +279,13 @@ class PipelineRunner:
             if 'word timestamps required' in detail and not any(v in detail for v in ('out of memory','allocation failed')):
                 raise AsrQualityError(str(exc)) from exc
             raise
+        return self.parse_asr(folder,item,log,range_start,range_duration)
+
+    def parse_asr(self,folder,item,log,range_start,range_duration):
+        if any(s in log.lower() for s in ('out of memory','allocation failed','falling back')):
+            raise ValueError('ASR reported a device or memory failure; pipeline stopped. See engine.log.')
+        if 'alignment collapse' in log.lower():
+            raise AsrQualityError('Aligner reported alignment collapse; ASR result rejected. See engine.log.')
         candidates = list(folder.glob('*.srt'))
         if len(candidates)!=1:
             raise ValueError('Silnik ASR nie zapisał jednoznacznego pliku SRT.')
@@ -294,10 +301,6 @@ class PipelineRunner:
             raise AsrQualityError(str(exc)) from exc
         for segment in track.segments:
             segment.source = str(folder)
-        if any(s in log.lower() for s in ('out of memory','allocation failed','falling back')):
-            raise ValueError('ASR zgłosił problem wyrównania/pamięci/backendu. Sprawdź log; pipeline zatrzymano.')
-        if 'alignment collapse' in log.lower():
-            raise AsrQualityError('Aligner zgłosił podejrzane wyrównanie. Wynik ASR odrzucono; sprawdź engine.log.')
         track.name = 'Pipeline • '+item['name']+(' • VAD' if item['vad'] else ' • bez VAD')
         track.origin.update(pipeline=self.folder.name,configuration=item)
         result={'track':asdict(track)}
@@ -314,6 +317,9 @@ class PipelineRunner:
         return self.asr(folder,item,audio,range_start=start,range_duration=end-start)
 
     def retry_asr(self,folder,base,audio,confidence,scan=None):
+        if self.config.get('source_review_version') == 3:
+            from .source_review_v3 import retry_grouped
+            return retry_grouped(self,folder,base,audio,confidence,scan)
         from .asr_retry import retry_windows,consensus,suspects
         from .asr_disagreement import disagreement_targets,reuse_scan
         options=self.config['retry_asr']
@@ -413,6 +419,11 @@ class PipelineRunner:
             self.state['asr_retry_windows']=len(result['windows']);self.state['asr_retry_changes']=len(result['changes'])
             self.state['jp_scan_disagreements']=len(result.get('disagreements',[]))
             self.state['jp_reused_scan_attempts']=sum(a.get('reused_from')=='asr-scan' for w in result['windows'] for a in w['attempts'])
+            if self.config.get('source_review_version')==3:
+                self.state['jp_third_windows']=result.get('third_processed',0)
+                self.state['asr_failures'].extend({'stage':'asr-retry','window':w['id'],'model':a.get('model'),
+                    'name':a.get('name','ASR'),'reason':a.get('error'),'log':str(Path(a.get('directory',''))/'engine.log')} for w in result['windows']
+                    for a in w['attempts'] if not a.get('usable'))
         if self.config.get('source_review_version'):
             from .asr_review import review_fragments
             reviewed=self.stage('jp-review',lambda f:review_fragments(base,
@@ -421,6 +432,11 @@ class PipelineRunner:
             final=track_from(reviewed['track'])
             self.state['jp_review_changes']=len(reviewed['changes'])
             self.state['jp_review_changed_cues']=reviewed['changed_cues']
+        if self.config.get('jp_context_review'):
+            from .jp_context_review import review_context
+            contextual=self.stage('jp-context',lambda f:review_context(self,f,reviewed))
+            final=track_from(contextual['track'])
+            self.state['jp_context_flags']=len(contextual['flags'])
         def layout(folder):
             from .review import reflow_japanese
             track=clone_track(final,'Pipeline • wynik JP')
@@ -680,6 +696,8 @@ class PipelineRunner:
         report['asr_failures']=self.state.get('asr_failures',[])
         jp_review=self.folder/'jp-review/result.json'
         report['jp_review']=read_json(jp_review) if jp_review.is_file() else None
+        context_path=self.folder/'jp-context/result.json'
+        report['jp_context']=read_json(context_path) if context_path.is_file() else None
         scan_path=self.folder/'asr-scan/result.json'
         report['asr_scan']=read_json(scan_path) if scan_path.is_file() else None
         report['jp_scan_disagreements']=self.state.get('jp_scan_disagreements',0)
@@ -687,7 +705,7 @@ class PipelineRunner:
         if self.config.get('transcription_only'):
             retry=self.folder/'asr-retry/result.json'
             report['asr_retry']=read_json(retry) if retry.exists() else None
-            report['scope']='Japanese transcription only; no translation, LLM or English review'
+            report['scope']='Japanese transcription only; optional JP context review; no translation' if self.config.get('jp_context_review') else 'Japanese transcription only; no translation, LLM or English review'
             report['limitation']='Confidence and local retry agreement are diagnostic signals, not audio ground truth. Disputed phrases retain the baseline.'
         if report['asr_failures']: report['status']='needs_review'
         write_json(output/'report.json',report)
@@ -696,7 +714,7 @@ class PipelineRunner:
                  'Wybór ASR i review AI opierają się na tekście. Rozbieżne miejsca wymagają odsłuchu.']
         if self.config.get('transcription_only'):
             lines=['# Raport transkrypcji JP',f'Napisy: {len(rows)}. Z ostrzeżeniami: {report["warnings"]}.',
-                   'Large V3 + VAD jest bazą. Model pomocniczy stanowi propozycję dla wycinków. Bez tłumaczenia i bez LLM.',
+                   'Large V3 + VAD baseline; auxiliary audio hypotheses; no translation.',
                    f'Ponowione wycinki: {self.state.get("asr_retry_windows",0)}; zmienione napisy JP: {self.state.get("jp_review_changed_cues",self.state.get("asr_retry_changes",0))}.',
                    'Zgodność ponowień i pewność tokenów nie gwarantują poprawności. Sprawdź rozbieżności odsłuchem.']
         if report['jp_review']:
@@ -834,7 +852,7 @@ def approve_review(manifest,track):
 def _run_pipeline(manifest,emit):
     runner = PipelineRunner(manifest,emit)
     try:
-        if not runner.config.get('transcription_only') and runner.config['backend']=='embedded' and runner.config.get('llm_keep_loaded'):
+        if (not runner.config.get('transcription_only') or runner.config.get('jp_context_review')) and runner.config['backend']=='embedded' and runner.config.get('llm_keep_loaded'):
             from .native_session import inference_session
             with inference_session(runner.folder/'native-sessions'):
                 runner.run()

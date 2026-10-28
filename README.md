@@ -4,13 +4,16 @@
 
 KoeSub is an open-source Windows desktop app for turning Japanese speech into editable, reviewable subtitles. We are building it step by step, with an emphasis on comparing ASR hypotheses, combining corroborated phrases, and reviewing the original transcript **before translation**.
 
-The current priority is Japanese transcription. Optional English translation is available, but the default pipeline runs without a translator or LLM. This is a working prototype, and difficult recordings still need human review.
+The current priority is Japanese transcription. English translation is optional. Japanese transcription can run without an LLM; optional scene-context review uses a local model to flag concerns and recommend existing ASR alternatives. This is a working prototype, and difficult recordings still need human review.
 
 ## Features
 
 - Video playback, waveform navigation, cue playback, editing, undo/redo, and SQLite projects.
 - Local Whisper Large V3 inference through whisper.cpp/CrispASR, VAD, and an explicit GPU backend.
-- A one-click Japanese pipeline: **audio → baseline ASR → optional full auxiliary scan → targeted retries → phrase review → layout → subtitles and report**.
+- A one-click Japanese pipeline: **audio → baseline ASR → optional auxiliary scan → grouped retries → third ASR for unresolved windows → phrase review → optional JP scene review → layout → subtitles and report**.
+- Bounded third-model work, normally Qwen3-ASR JA Anime/Galgame. A third decoder can corroborate a baseline retry; two auxiliaries cannot outvote it. Timing, phrase boundaries, confidence and manual-edit guards still apply.
+- Several retry clips can share one native process per model. Models run sequentially; per-clip logs, confidence, native output and resume receipts are retained.
+- Japanese context review checks nearby dialogue for suspicious words, names and continuity, with exact ASR-choice recommendations. It does not translate or automatically rewrite dialogue.
 - Local comparison of ASR phrases with surrounding text and timestamps. Corroborated retries can correct a phrase while disputed text remains available for listening and comparison.
 - Protection for manually edited or reviewed cues, with source provenance and before/after records.
 - Explicit human phrase selection with saved provenance and undo. New disagreement targets cannot displace earlier low-confidence windows.
@@ -60,10 +63,11 @@ Dependencies, models, and media retain their own licenses. See [THIRD_PARTY.md](
 .\.venv\Scripts\python.exe -m pytest -q
 ```
 
-The current suite contains **191 passing tests**, including a clean repository snapshot with no local data or models. It covers editing, persistence, manual-change protection, ASR comparison, phrase review, evaluation-only oracle selection, stage ordering, exports, and resume behavior. Unit tests do not require model weights or a GPU. Hardware verification scripts in `tools/` require separately prepared runtimes, models, and media.
+The current suite contains **208 passing tests**, also verified on a clean source-only copy without developer data or models. It covers editing, persistence, manual-change protection, ASR comparison, third-model routing, grouped output ownership and failure isolation, context-choice validation, evaluation-only oracle selection, stage ordering, exports, and resume behavior. Unit tests do not require model weights or a GPU. Hardware verification scripts in `tools/` require separately prepared runtimes, models, and media.
 
 Recorded experiments and their limitations:
 
+- [Third ASR, Japanese context review, grouped CUDA inference, and reference checks](SOURCE_REVIEW_V3.md)
 - [Auxiliary scan, editable review, additional clips, and full-movie regression checks](ASR_SCAN_REVIEW_V2.md)
 - [Ten-clip ASR/fusion benchmark and reference-guided selection opportunity](ASR_FUSION_BENCHMARK.md)
 - [Japanese phrase review and transcript fusion](JP_SOURCE_REVIEW.md)
