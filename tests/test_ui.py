@@ -226,7 +226,7 @@ def test_jp_scope_needs_no_translator_and_fixes_baseline_vad(window,tmp_path):
     assert config['retry_asr']['auxiliary']['model']==str(aux)
     assert config['source_review_version']==3 and config['retry_asr']['scan_first']
     assert config['retry_asr']['batch_retries'] and not config['jp_context_review']
-    assert [s['id'] for s in plan(config)]==['audio','asr-0','asr-scan','asr-retry','jp-review','jp-layout','jp-export']
+    assert [s['id'] for s in plan(config)]==['audio','asr-0','asr-scan','asr-retry','jp-review','jp-adaptive','jp-layout','jp-export']
 
 
 def test_third_asr_default_and_explicit_disabled_survive_model_refresh(window,tmp_path):
@@ -507,3 +507,57 @@ def test_quality_event_dialog_is_a_normal_qt_widget(window,app):
     dialog.category.setCurrentIndex(dialog.category.findData('meaning'))
     assert 'fact' in dialog.definition.text() and dialog.values()['category']=='meaning'
     dialog.close()
+
+
+def test_alignment_comparison_dialog_keeps_before_after_and_plays_selected_timing(window,tmp_path,app):
+    from studio.pipeline_worker import write_json
+    from PySide6.QtWidgets import QTableWidget
+    w,_=window;folder=tmp_path/'aligned';(folder/'jp-align').mkdir(parents=True)
+    w.project.jobs=[{'type':'pipeline','manifest':str(folder/'manifest.json')}]
+    record={'before':{'start':1000,'end':5000,'text':'日本語です。'},'after':[{'start':1200,'end':4500,'text':'日本語です。'}],
+            'applied':True,'reason':'Measured boundary','proposal':{'display_hold_ms':200}}
+    write_json(folder/'jp-align/result.json',{'records':[record],'retimed_cues':1,'split_cues':0})
+    played=[];w.play_interval=lambda *args:played.append(args)
+    panel=w.pipeline_panel;panel.show_alignment_results();app.processEvents()
+    table=panel.alignment_dialog.findChild(QTableWidget)
+    assert '1.00' in table.item(0,0).text() and '1.20' in table.item(0,1).text()
+    assert 'reading hold 200' in table.item(0,3).text()
+    table.cellDoubleClicked.emit(0,0);table.cellDoubleClicked.emit(0,1)
+    assert played==[(1000,5000),(1200,4500)]
+    panel.alignment_dialog.close()
+
+
+def test_audio_refinement_controls_allow_independent_disable_and_safe_default_without_aligner(window,tmp_path):
+    from studio.storage import Model
+    from studio.pipeline import plan
+    w,_=window;media=tmp_path/'source.wav';media.write_bytes(b'local media')
+    base=tmp_path/'ggml-large-v3.bin';base.write_bytes(b'ggml')
+    aux=tmp_path/'ggml-kotoba-whisper-v2.bin';aux.write_bytes(b'ggml')
+    w.models=[Model(p.name,str(p),'Whisper / GGML',4) for p in (base,aux)]
+    w.settings.crisp_exe=sys.executable;w.project=Project(media=str(media),duration=10000);w.store=ProjectStore(tmp_path/'project.sqlite')
+    panel=w.pipeline_panel;panel.refresh_models();panel.apply_preset(5)
+    assert not panel.align_audio.isChecked()
+    w.settings.crisp_aligner=str(aux);panel.align_audio.setChecked(True)
+    config=panel.config('test')
+    assert config['adaptive_retry']['enabled'] and config['jp_alignment']['enabled']
+    assert [s['id'] for s in plan(config)][-4:]==['jp-adaptive','jp-align','jp-layout','jp-export']
+    panel.adaptive_audio.setChecked(False);panel.align_audio.setChecked(False)
+    config=panel.config('test')
+    assert not config['adaptive_retry']['enabled'] and not config['jp_alignment']['enabled']
+
+
+def test_adaptive_audio_dialog_keeps_both_contexts_and_plays_actual_attempt_range(window,tmp_path,app):
+    from studio.pipeline_worker import write_json
+    from PySide6.QtWidgets import QTableWidget
+    w,_=window;folder=tmp_path/'adaptive';(folder/'jp-adaptive').mkdir(parents=True)
+    w.project.jobs=[{'type':'pipeline','manifest':str(folder/'manifest.json')}]
+    attempts=[{'name':name,'usable':True,'audio_range':span,'track':{'segments':[{'text':'音声の仮説です。'}]}}
+        for name,span in [('base short',[2000,8000]),('base wide',[0,12000]),('aux short',[2000,8000]),('aux wide',[0,12000])]]
+    write_json(folder/'jp-adaptive/result.json',{'windows':[{'target_id':'target','start':0,'end':12000,
+        'before':[{'id':'target','text':'元の文章です。'}],'attempts':attempts}],'changes':[],'deferred':[]})
+    played=[];w.play_interval=lambda *args:played.append(args);panel=w.pipeline_panel;panel.show_adaptive_results();app.processEvents()
+    table=panel.adaptive_dialog.findChild(QTableWidget)
+    assert table.columnCount()==6 and 'base wide' in table.item(0,3).text()
+    table.cellDoubleClicked.emit(0,2);table.cellDoubleClicked.emit(0,5)
+    assert played==[(2000,8000),(0,12000)]
+    panel.adaptive_dialog.close()

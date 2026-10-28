@@ -159,6 +159,13 @@ class PipelinePanel(QWidget):
         self.jp_context_review.setChecked(True)
         self.jp_context_review.setToolTip('Uses the selected local review LLM after audio models exit. Does not translate or rewrite dialogue; recommendations require listening.')
         layout.addWidget(self.jp_context_review)
+        adaptive_row=QHBoxLayout()
+        self.adaptive_audio=QCheckBox('Adaptive audio • compare short/wide contexts and VAD boundaries');self.adaptive_audio.setChecked(True)
+        self.adaptive_limit=QSpinBox();self.adaptive_limit.setRange(1,12);self.adaptive_limit.setValue(4);self.adaptive_limit.setSuffix(' targets max.')
+        adaptive_row.addWidget(self.adaptive_audio,1);adaptive_row.addWidget(self.adaptive_limit);layout.addLayout(adaptive_row)
+        self.align_audio=QCheckBox('Align final Japanese text to audio • preserve protected cues');self.align_audio.setChecked(True)
+        self.align_split=QCheckBox('Split long cues at aligned phrase boundaries');self.align_split.setChecked(True)
+        layout.addWidget(self.align_audio);layout.addWidget(self.align_split)
         self.film_context=QCheckBox('Kontekst całego filmu • temat, terminy i spójność dialogów')
         self.film_context.setChecked(True)
         layout.addWidget(self.film_context)
@@ -186,6 +193,10 @@ class PipelinePanel(QWidget):
         layout.addLayout(row)
         self.summary = text_label('Plan: audio → ASR → wybór JP → warianty EN → wybór EN → review → SRT i raport.')
         layout.addWidget(self.clips_button)
+        refinement_row=QHBoxLayout()
+        self.adaptive_results=QPushButton('Adaptive ASR comparison');self.alignment_results=QPushButton('Timing changes')
+        refinement_row.addWidget(self.adaptive_results);refinement_row.addWidget(self.alignment_results);layout.addLayout(refinement_row)
+        self.adaptive_results.clicked.connect(self.show_adaptive_results);self.alignment_results.clicked.connect(self.show_alignment_results)
         layout.addWidget(self.summary)
         self.stages = QTableWidget(0,3)
         self.stages.setMinimumHeight(160)
@@ -198,7 +209,8 @@ class PipelinePanel(QWidget):
         self.inputs += [self.preset,self.backend,self.review,self.review_action,self.asr_count,self.en_count,self.judge,
                         self.start,self.length,self.autosplit,self.export,self.export_format,self.sound,self.pause,self.film_context,self.continue_asr,self.readability,
                         self.transcription_only,self.retry_clips,self.retry_aux,self.retry_context,self.retry_limit,self.scan_first,
-                        self.retry_third,self.third_limit,self.batch_retries,self.jp_context_review]
+                        self.retry_third,self.third_limit,self.batch_retries,self.jp_context_review,
+                        self.adaptive_audio,self.adaptive_limit,self.align_audio,self.align_split]
         self.asr_count.valueChanged.connect(self.show_rows)
         self.en_count.valueChanged.connect(self.show_rows)
         self.asr_count.valueChanged.connect(self.update_preset_label)
@@ -209,6 +221,7 @@ class PipelinePanel(QWidget):
         self.transcription_only.toggled.connect(self.update_scope)
         self.retry_clips.toggled.connect(self.update_scope)
         self.jp_context_review.toggled.connect(self.update_scope)
+        self.align_audio.toggled.connect(self.update_scope)
         self.apply_preset(5)
 
     def update_scope(self,*_):
@@ -235,6 +248,9 @@ class PipelinePanel(QWidget):
         self.retry_limit.setEnabled(jp and self.retry_clips.isChecked() and not self.owner.busy)
         for widget in (self.third_label,self.retry_third,self.third_limit,self.batch_retries,self.jp_context_review):widget.setVisible(jp)
         for widget in (self.retry_third,self.third_limit,self.batch_retries):widget.setEnabled(jp and self.retry_clips.isChecked() and not self.owner.busy)
+        for widget in (self.adaptive_audio,self.adaptive_limit,self.align_audio,self.align_split):widget.setVisible(jp)
+        for widget in (self.adaptive_audio,self.adaptive_limit):widget.setEnabled(jp and self.retry_clips.isChecked() and not self.owner.busy)
+        self.align_split.setEnabled(jp and self.align_audio.isChecked() and not self.owner.busy)
         self.update_preset_label()
 
     def preview_plan(self):
@@ -245,6 +261,8 @@ class PipelinePanel(QWidget):
                   'jp_context_review':self.transcription_only.isChecked() and self.jp_context_review.isChecked()}
         config.update(transcription_only=self.transcription_only.isChecked(),retry_asr={'enabled':self.retry_clips.isChecked(),
             'scan_first':self.scan_first.isChecked(),'auxiliary':self.retry_aux.currentData()})
+        config.update(adaptive_retry={'enabled':self.transcription_only.isChecked() and self.retry_clips.isChecked() and self.adaptive_audio.isChecked()},
+            jp_alignment={'enabled':self.transcription_only.isChecked() and self.align_audio.isChecked()})
         steps = plan(config)
         self.stages.setRowCount(len(steps))
         for row,stage in enumerate(steps):
@@ -286,6 +304,7 @@ class PipelinePanel(QWidget):
         self.en_table.setFixedHeight(height)
 
     def refresh_models(self,*_):
+        if not self.owner.settings.crisp_aligner or not Path(self.owner.settings.crisp_aligner).is_file():self.align_audio.setChecked(False)
         records = []
         for engine,kind in [(2,'Whisper / GGML'),(1,'Qwen ASR'),(3,'ReazonSpeech / GGUF'),(0,'Whisper / CTranslate2')]:
             executable = self.owner.settings.whisper_exe if engine==0 else self.owner.settings.crisp_exe
@@ -379,6 +398,8 @@ class PipelinePanel(QWidget):
             self.scan_first.setChecked(prefs.get('scan_first',True))
             self.batch_retries.setChecked(prefs.get('batch_retries',True))
             self.jp_context_review.setChecked(prefs.get('jp_context_review',True))
+            self.adaptive_audio.setChecked(prefs.get('adaptive_audio',True));self.adaptive_limit.setValue(prefs.get('adaptive_limit',4))
+            self.align_audio.setChecked(prefs.get('align_audio',self.align_audio.isChecked()));self.align_split.setChecked(prefs.get('align_split',True))
             self.third_limit.setValue(prefs.get('third_limit',6))
             if 'retry_third_model' in prefs:
                 saved=prefs['retry_third_model']
@@ -440,6 +461,8 @@ class PipelinePanel(QWidget):
             context=self.jp_context_review.isChecked()
             if context and not self.judge.currentData(): raise ValueError('Select a model for Japanese context review, or disable that review.')
             config.update(review='rules',jp_context_review=context,autosplit=False,
+                adaptive_retry={'enabled':self.retry_clips.isChecked() and self.adaptive_audio.isChecked() and bool(auxiliary),'max_targets':self.adaptive_limit.value()},
+                jp_alignment={'enabled':self.align_audio.isChecked(),'split':self.align_split.isChecked(),'max_shift_ms':1500},
                 judge_model=self.judge.currentData() if context else '',
                 llm_keep_loaded=config['llm_keep_loaded'] if context else False,
                 retry_asr={'enabled':self.retry_clips.isChecked(),'padding_ms':round(self.retry_context.value()*1000),
@@ -485,6 +508,8 @@ class PipelinePanel(QWidget):
             owner.project.pipeline_prefs['retry_aux_model']=(self.retry_aux.currentData() or {}).get('model')
             owner.project.pipeline_prefs.update(retry_third_model=(self.retry_third.currentData() or {}).get('model'),
                 third_limit=self.third_limit.value(),batch_retries=self.batch_retries.isChecked(),jp_context_review=self.jp_context_review.isChecked())
+            owner.project.pipeline_prefs.update(adaptive_audio=self.adaptive_audio.isChecked(),adaptive_limit=self.adaptive_limit.value(),
+                align_audio=self.align_audio.isChecked(),align_split=self.align_split.isChecked())
             owner.job = {'id':run_id,'type':'pipeline','status':'running','created':now(),
                          'manifest':str(folder/'manifest.json'),'track_hashes':{},'stage_tracks':{}}
             owner.project.jobs.append(owner.job)
@@ -527,7 +552,7 @@ class PipelinePanel(QWidget):
         self.context_label.setText('Kontekst • hipoteza z dostępnego JP: '+context if context else 'Kontekst dostępnych napisów pojawi się po analizie.')
         self.context_label.setToolTip(context+'\n\n'+state.get('continuity_notes',''))
         if state['config'].get('transcription_only'):
-            self.context_label.setText('Large V3 + VAD → ponowienia audio → review i składanie zgodnych fraz JP → SRT. Sporne frazy do odsłuchu. Bez tłumaczenia i bez LLM.')
+            self.context_label.setText('Japanese source: baseline → audio retries → phrase review → optional context/adaptive audio/alignment → subtitles. Disputed content requires listening.')
             if state['config'].get('retry_asr',{}).get('scan_first'):
                 self.context_label.setText(f'Baseline + auxiliary scan → disagreements → audio retries → JP review. '
                     f'Disputed cues: {state.get("jp_scan_disagreements",0)}; reused scan fragments: {state.get("jp_reused_scan_attempts",0)}.')
@@ -552,6 +577,8 @@ class PipelinePanel(QWidget):
         if state['config'].get('transcription_only'):
             edits=f' • ponowione wycinki: {state.get("asr_retry_windows",0)} • zmienione napisy JP: {state.get("jp_review_changed_cues",state.get("asr_retry_changes",0))}'
             if state['config'].get('source_review_version')==3:edits+=f' • third ASR: {state.get("jp_third_windows",0)} • context flags: {state.get("jp_context_flags",0)}'
+            if state['config'].get('adaptive_retry',{}).get('enabled'):edits+=f' • adaptive edits: {state.get("jp_adaptive_changes",0)}'
+            if state['config'].get('jp_alignment',{}).get('enabled'):edits+=f' • aligned: {state.get("jp_retimed_cues",0)} • split: {state.get("jp_split_cues",0)}'
         if rejected: edits+=f' • odrzucone ASR: {len(state.get("asr_failures",[]))}'
         action='sprawdź i popraw' if state['config'].get('review') in {'balanced','deep'} and repairs_enabled(state['config']) else 'sprawdzanie'
         self.summary.setText(f'Etapy: {done}/{len(state["stages"])} • {status} • {action}{edits} • '
@@ -628,6 +655,10 @@ class PipelinePanel(QWidget):
             owner.progress_label.setText(f'Pipeline zakończony • poprawiono EN: {state.get("review_changed_cues",0)} • {state["warnings"]} napisów do kontroli')
             if state['config'].get('transcription_only'):
                 owner.progress_label.setText(f'JP zakończone • wycinki: {state.get("asr_retry_windows",0)} • zmienione napisy: {state.get("jp_review_changed_cues",state.get("asr_retry_changes",0))} • {state["warnings"]} napisów do kontroli')
+                if state['config'].get('adaptive_retry',{}).get('enabled'):
+                    owner.progress_label.setText(owner.progress_label.text()+f' • adaptive phrase edits: {state.get("jp_adaptive_changes",0)}')
+                if state['config'].get('jp_alignment',{}).get('enabled'):
+                    owner.progress_label.setText(owner.progress_label.text()+f' • retimed: {state.get("jp_retimed_cues",0)} • split: {state.get("jp_split_cues",0)}')
             if self.sound.isChecked():
                 QApplication.beep()
         self.render_state(state)
@@ -641,6 +672,71 @@ class PipelinePanel(QWidget):
             state = read_json(job['manifest'])
             output = Path(state['config']['output_dir'])
             QDesktopServices.openUrl(QUrl.fromLocalFile(str(output if output.exists() else Path(job['manifest']).parent)))
+
+    def show_adaptive_results(self):
+        from PySide6.QtWidgets import QDialog,QDialogButtonBox
+        job=self.last_job()
+        if not job:return
+        path=Path(job['manifest']).parent/'jp-adaptive/result.json'
+        if not path.is_file():return
+        result=read_json(path);windows=result['windows']
+        dialog=QDialog(self.owner);dialog.setWindowTitle('Adaptive audio • two contexts from two model weights');dialog.resize(1400,740)
+        layout=QVBoxLayout(dialog)
+        layout.addWidget(text_label(f'Targets: {len(windows)}; phrase edits: {len(result["changes"])}; deferred: {len(result.get("deferred",[]))}. '
+            'Four attempts use two model weights, with short/wide context and different VAD settings. Double-click an attempt to listen to its audio range.'))
+        table=QTableWidget(len(windows),6);table.setHorizontalHeaderLabels(['Context time','Current target','Baseline short','Baseline wide','Auxiliary short','Auxiliary wide'])
+        table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers);table.setWordWrap(True)
+        table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        for row,window in enumerate(windows):
+            target=next((s['text'] for s in window['before'] if s['id']==window['target_id']),'')
+            texts=[]
+            for attempt in window['attempts']:
+                text='\n'.join(s['text'] for s in attempt.get('track',{}).get('segments',[])) if attempt.get('usable') else attempt.get('error','Unavailable')
+                texts.append(attempt.get('name','ASR')+'\n'+text)
+            values=[f'{window["start"]/1000:.2f}–{window["end"]/1000:.2f} s',target,*texts]
+            for col,value in enumerate(values[:6]):
+                item=QTableWidgetItem(value);item.setToolTip(value);table.setItem(row,col,item)
+            table.setRowHeight(row,200)
+        def play(row,col):
+            window=windows[row]
+            span=window['attempts'][col-2].get('audio_range',[window['start'],window['end']]) if col>=2 else [window['start'],window['end']]
+            self.owner.play_interval(*span)
+        table.cellDoubleClicked.connect(play);layout.addWidget(table)
+        phrases=QPushButton('Open phrase decisions');phrases.setEnabled('fragments' in result)
+        phrases.clicked.connect(lambda:self.show_source_review(result));layout.addWidget(phrases)
+        buttons=QDialogButtonBox(QDialogButtonBox.StandardButton.Close);buttons.rejected.connect(dialog.reject);layout.addWidget(buttons)
+        dialog.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose);dialog.show();self.adaptive_dialog=dialog
+
+    def show_alignment_results(self):
+        from PySide6.QtWidgets import QDialog,QDialogButtonBox
+        job=self.last_job()
+        if not job:return
+        path=Path(job['manifest']).parent/'jp-align/result.json'
+        if not path.is_file():return
+        result=read_json(path);records=sorted(result['records'],key=lambda r:(not r['applied'],r['before']['start']))
+        dialog=QDialog(self.owner);dialog.setWindowTitle('Final audio alignment • original and selected timing');dialog.resize(1250,650)
+        layout=QVBoxLayout(dialog)
+        layout.addWidget(text_label(f'Aligned/changed input cues: {result["retimed_cues"]}; split cues: {result["split_cues"]}. '
+            'Times are aligner estimates. Original tracks remain available; protected and rejected cues keep their original timing. Double-click to listen.'))
+        table=QTableWidget(len(records),4);table.setHorizontalHeaderLabels(['Original time','Output times','Text','Decision'])
+        table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers);table.setWordWrap(True)
+        table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        for row,record in enumerate(records):
+            before=record['before'];after=record['after']
+            values=[f'{before["start"]/1000:.2f}–{before["end"]/1000:.2f} s',
+                '\n'.join(f'{s["start"]/1000:.2f}–{s["end"]/1000:.2f} s' for s in after),
+                '\n'.join(s['text'] for s in after),('CHANGED • ' if record['applied'] else 'RETAINED • ')+record['reason']]
+            hold=record.get('proposal',{}).get('display_hold_ms',0)
+            if hold:values[-1]+=f' • reading hold {hold} ms after measured speech end'
+            for col,value in enumerate(values):
+                item=QTableWidgetItem(value);item.setToolTip(value);table.setItem(row,col,item)
+            table.setRowHeight(row,95)
+        def play(row,col):
+            record=records[row];cues=record['after']
+            self.owner.play_interval(record['before']['start'],record['before']['end']) if col==0 else self.owner.play_interval(cues[0]['start'],cues[-1]['end'])
+        table.cellDoubleClicked.connect(play);layout.addWidget(table)
+        buttons=QDialogButtonBox(QDialogButtonBox.StandardButton.Close);buttons.rejected.connect(dialog.reject);layout.addWidget(buttons)
+        dialog.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose);dialog.show();self.alignment_dialog=dialog
 
     def show_retry_results(self):
         from PySide6.QtWidgets import QDialog,QDialogButtonBox
@@ -680,6 +776,7 @@ class PipelinePanel(QWidget):
         layout=QVBoxLayout(dialog)
         layout.addWidget(text_label(f'Zmienione frazy: {len(result["changes"])}; napisy: {result["changed_cues"]}. '
             'Czasy zachowano. Sporne fragmenty pozostają z bazy. Zgodność modeli nie gwarantuje poprawności. Dwuklik: odsłuch napisu.'))
+        layout.addWidget(text_label('For retimed or split output, edit the final cue directly, or select its pre-alignment review track to apply an ASR phrase choice.'))
         table=QTableWidget(len(fragments),6)
         table.setHorizontalHeaderLabels(['Czas','Fraza z bazy','Wynik','Ponowienie bazy / ASR 1','Pozostałe ASR','Decyzja'])
         table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)

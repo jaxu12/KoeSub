@@ -4,7 +4,7 @@ from pathlib import Path
 import time
 import re
 
-from .adapters import crisp_command, whisper_cpp_command, reazonspeech_command, validate_crisp_backend
+from .adapters import crisp_command, whisper_cpp_command, reazonspeech_command, validate_crisp_backend,validate_flags
 from .asr_disagreement import disagreement_targets, reuse_scan
 from .asr_retry import retry_windows, suspects
 from .asr_review import review_fragments
@@ -68,6 +68,12 @@ def decode_batch(runner, root, item, jobs):
     fn={1:crisp_command,2:whisper_cpp_command,3:reazonspeech_command}[item['engine']]
     first=jobs[0]
     args=fn(runner.settings,model,first['audio'],first['folder'],item['vad'],help_text)
+    if item.get('vad_options'):
+        values=item['vad_options']
+        if not item['vad'] or set(values)!={'speech_pad_ms','min_silence_ms'} or any(
+            type(v) is not int or not 0<=v<=1000 for v in values.values()):raise ValueError('Invalid adaptive VAD parameters')
+        extra=['--vad-speech-pad-ms',str(values['speech_pad_ms']),'-vsd',str(values['min_silence_ms'])]
+        validate_flags(help_text,extra);args+=extra
     for flag in ('--file','--output-file'):
         at=args.index(flag);del args[at:at+2]
     for job in jobs:

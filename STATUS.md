@@ -16,11 +16,13 @@ KoeSub is a working Windows/PySide6 prototype. The current focus is Japanese sou
 
 - An offline Source quality workbench separates character differences from user-attested omission/addition/name/meaning events, with audio reference checks and paired assessment coverage. Production tracks remain unchanged.
 
+- Optional adaptive audio probes short/wide contexts and two VAD profiles for unresolved targets. Final-text alignment works in bounded blocks, protects reading exposure and manual cues, and can split long cues at measured word boundaries.
+
 ## Verification
 
 Source review v2 adds a full auxiliary disagreement scan, protects earlier retry priority, reuses complete scan cues where appropriate, and supports saved human phrase choices with undo. Ten additional clips moved from 67/664 to 65/664 reference edits, primarily from spelling; semantic improvement was not demonstrated. The movie regression fix preserves the two earlier edits. Extra coverage costs more processing time. See [ASR_SCAN_REVIEW_V2.md](ASR_SCAN_REVIEW_V2.md).
 
-The current suite has **231 passing tests**, also verified on a clean source-only copy without developer data or models. Hardware experiments use separately prepared assets; they are not part of the unit-test suite. Source review v3 behavior, fresh CUDA timing comparisons, and reference checks are documented in [SOURCE_REVIEW_V3.md](SOURCE_REVIEW_V3.md).
+The current suite has **261 passing tests**, also verified on a clean source-only copy without developer data or models. Hardware experiments use separately prepared assets; they are not part of the unit-test suite. Source review v3 behavior, fresh CUDA timing comparisons, and reference checks are documented in [SOURCE_REVIEW_V3.md](SOURCE_REVIEW_V3.md).
 
 An earlier ten-clip CUDA benchmark compared five models, production review, and evaluation-only reference-guided selection across the existing MCDC core and five newly acquired FLEURS read-speech recordings. Baseline and production both had 31/645 character edits (4.81% CER); constrained oracle selection reached 21/645 (3.26%). Production applied no phrase changes. This identifies missed targeting/selection opportunities, not a measured improvement in the shipping review. See [ASR_FUSION_BENCHMARK.md](ASR_FUSION_BENCHMARK.md).
 
@@ -30,8 +32,10 @@ Earlier experiments showed that a faster auxiliary ASR can be less accurate than
 
 The new quality study reuses five completed FLEURS clips (6/257 text differences, 2.33% CER for both variants). Its references and semantic events are still awaiting human listening; unassessed categories are not zero errors. See [SOURCE_QUALITY_EVALUATION.md](SOURCE_QUALITY_EVALUATION.md).
 
+A fresh 282.73-second CUDA movie run took 347.953 seconds, accepted timing changes for 20 cues and reduced reading-speed violations from 16 to 15. Adaptive audio made no additional text changes; five reused reference clips remain at 6/257 character differences. See [ADAPTIVE_AUDIO_AND_ALIGNMENT.md](ADAPTIVE_AUDIO_AND_ALIGNMENT.md).
+
 ## Open work
 
-Improve transcript selection using independently checked references and evaluate additional recordings and speakers. Grouped retry inference reduces reload costs; full-recording ASR and auxiliary scans still use separate native runs. Translation quality, speaker perspective, terminology, audio-based retiming, voice separation, multi-file project queues, English UI localization, and a packaged Windows executable remain areas for further work. Automatic cache-size limits and an in-app GPU/RAM telemetry panel are not implemented.
+Improve transcript selection using independently checked references and evaluate additional recordings and speakers. Grouped retry inference reduces reload costs; full-recording ASR and auxiliary scans still use separate native runs. Translation quality, speaker perspective, terminology, alignment coverage/accuracy, standalone imported-track alignment, voice separation, multi-file project queues, English UI localization, and a packaged Windows executable remain areas for further work. Automatic cache-size limits and an in-app GPU/RAM telemetry panel are not implemented.
 
 The project previously used the working title AI Subtitle Studio. The Python package and existing local receipt names remain compatible with earlier installations.

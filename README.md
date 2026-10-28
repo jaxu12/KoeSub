@@ -10,11 +10,13 @@ The current priority is Japanese transcription. English translation is optional.
 
 - Video playback, waveform navigation, cue playback, editing, undo/redo, and SQLite projects.
 - Local Whisper Large V3 inference through whisper.cpp/CrispASR, VAD, and an explicit GPU backend.
-- A one-click Japanese pipeline: **audio → baseline ASR → optional auxiliary scan → grouped retries → third ASR for unresolved windows → phrase review → optional JP scene review → layout → subtitles and report**.
+- A one-click Japanese pipeline: **audio → baseline ASR → optional auxiliary scan → grouped retries → third ASR for unresolved windows → phrase review → optional JP scene review → adaptive contexts → final audio alignment → layout → subtitles and report**.
 - Bounded third-model work, normally Qwen3-ASR JA Anime/Galgame. A third decoder can corroborate a baseline retry; two auxiliaries cannot outvote it. Timing, phrase boundaries, confidence and manual-edit guards still apply.
 - Several retry clips can share one native process per model. Models run sequentially; per-clip logs, confidence, native output and resume receipts are retained.
 - Japanese context review checks nearby dialogue for suspicious words, names and continuity, with exact ASR-choice recommendations. It does not translate or automatically rewrite dialogue.
 - Local comparison of ASR phrases with surrounding text and timestamps. Corroborated retries can correct a phrase while disputed text remains available for listening and comparison.
+- Optional short/wide audio contexts with different VAD boundaries, bounded target budgets and corroboration across two model weights.
+- Final-text forced alignment, non-overlapping timing selection and word-boundary splitting of long cues, with reading-exposure and manual-edit protection. Original timings remain available.
 - Protection for manually edited or reviewed cues, with source provenance and before/after records.
 - Explicit human phrase selection with saved provenance and undo. New disagreement targets cannot displace earlier low-confidence windows.
 - Timing, overlap, reading-speed, and line-length checks; SRT, ASS, SSA, and TXT support. Imported ASS/SSA styling is not preserved.
@@ -64,9 +66,11 @@ Dependencies, models, and media retain their own licenses. See [THIRD_PARTY.md](
 .\.venv\Scripts\python.exe -m pytest -q
 ```
 
-The current suite contains **231 passing tests**, also verified on a clean source-only copy without developer data or models. It covers editing, persistence, manual-change protection, ASR comparison, third-model routing, grouped output ownership and failure isolation, context-choice validation, evaluation-only oracle selection, stage ordering, exports, and resume behavior. Unit tests do not require model weights or a GPU. Hardware verification scripts in `tools/` require separately prepared runtimes, models, and media.
+The current suite contains **261 passing tests**, also verified on a clean source-only copy without developer data or models. It covers editing, persistence, manual-change protection, ASR comparison, third-model routing, grouped output ownership and failure isolation, context-choice validation, evaluation-only oracle selection, stage ordering, exports, and resume behavior. Unit tests do not require model weights or a GPU. Hardware verification scripts in `tools/` require separately prepared runtimes, models, and media.
 
 Recorded experiments and their limitations:
+
+- [Adaptive audio, final alignment, exposure safeguards and CUDA verification](ADAPTIVE_AUDIO_AND_ALIGNMENT.md)
 
 - [Source-quality measurement and audio reference audit workflow](SOURCE_QUALITY_EVALUATION.md)
 

@@ -62,7 +62,7 @@ def _model(path):
     return str(path or '').replace('\\', '/').casefold()
 
 
-def review_fragments(base, windows, confidence, baseline_model,version=1):
+def review_fragments(base, windows, confidence, baseline_model,version=1,context_consistency=False):
     if version not in (1,2,3): raise ValueError('Unsupported source review version')
     result = clone_track(base, 'Pipeline • review transkrypcji JP')
     targets = {s.parents[0]: s for s in result.segments}
@@ -137,6 +137,14 @@ def review_fragments(base, windows, confidence, baseline_model,version=1):
                               and a['text'] and a['anchored'] and a['temporal']]
                 same = (candidate in supporters and _model(candidate.get('model')) == _model(baseline_model) != ''
                         and len({_model(a['model']) for a in supporters if a['model']}) >= 2)
+            if context_consistency:
+                by_model={}
+                for attempt in window['attempts']:
+                    by_model.setdefault(_model(attempt.get('model')),[]).append(attempt.get('context_variant'))
+                same = same and len(window['attempts'])==4 and len(usable)==4 and len(by_model)==2 and all(
+                    sorted(values)==['short','wide'] for values in by_model.values()) and all(
+                    a['confidence'] is not None and math.isfinite(a['confidence']) and a['confidence']>=.8
+                    for a in alternatives if _model(a['model'])==_model(baseline_model))
             reason = 'Rozbieżne lub niepełne hipotezy; zachowano bazę'
             approved = False
             if structural: reason = 'Dodanie tekstu lub zmiana przez granice napisów — wymaga odsłuchu'
@@ -154,6 +162,7 @@ def review_fragments(base, windows, confidence, baseline_model,version=1):
             else:
                 approved = True
                 reason = 'Zgodna lokalna fraza: ponowienie bazy i inny model; czasy zachowane'
+                if context_consistency:reason='Consistent local phrase in short/wide contexts from two model weights; times preserved'
             original = text[start:end] if structural else cue.text[lo:hi]
             record = {'window': window['id'], 'cue_id': cue.id,
                       'start': window['start'] if structural else cue.start, 'end': window['end'] if structural else cue.end,

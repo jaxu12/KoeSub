@@ -146,6 +146,7 @@ class PipelineRunner:
                                       cwd=folder,env=env,creationflags=subprocess.CREATE_NO_WINDOW if os.name=='nt' else 0)
             try:
                 with ChildJob(child):
+                    if name=='engine':write_json(folder/'engine-process.json',{'pid':child.pid,'started':now(),'command':args})
                     try:
                         code = child.wait(timeout=timeout)
                     except subprocess.TimeoutExpired as exc:
@@ -437,11 +438,31 @@ class PipelineRunner:
             contextual=self.stage('jp-context',lambda f:review_context(self,f,reviewed))
             final=track_from(contextual['track'])
             self.state['jp_context_flags']=len(contextual['flags'])
+        if self.config.get('adaptive_retry',{}).get('enabled') or self.config.get('jp_alignment',{}).get('enabled'):
+            from .native_session import ACTIVE
+            if ACTIVE.get():ACTIVE.get().close()
+        if self.config.get('adaptive_retry',{}).get('enabled'):
+            from .adaptive_asr import adaptive_retry
+            adapted=self.stage('jp-adaptive',lambda f:adaptive_retry(self,f,final,reviewed,audio,
+                raw.get('confidence',{}),contextual if self.config.get('jp_context_review') else None))
+            final=track_from(adapted['track'])
+            self.state['jp_adaptive_changes']=len(adapted['changes'])
+            self.state['jp_adaptive_targets']=len(adapted['windows'])
+            self.state['asr_failures'].extend({'stage':'jp-adaptive','window':w['id'],'model':a.get('model'),
+                'name':a.get('name','ASR'),'reason':a.get('error'),'log':str(Path(a.get('directory',''))/'engine.log')}
+                for w in adapted['windows'] for a in w['attempts'] if not a.get('usable'))
+        if self.config.get('jp_alignment',{}).get('enabled'):
+            from .audio_alignment import align_final
+            aligned=self.stage('jp-align',lambda f:align_final(self,f,final,audio))
+            final=track_from(aligned['track'])
+            self.state['jp_retimed_cues']=aligned['retimed_cues'];self.state['jp_split_cues']=aligned['split_cues']
         def layout(folder):
             from .review import reflow_japanese
             track=clone_track(final,'Pipeline • wynik JP')
             if self.config.get('readability_repair'):
-                for cue in track.segments: cue.text=reflow_japanese(cue.text,self.rules.jp_line,self.rules.max_lines)
+                for cue in track.segments:
+                    if cue.status!='manual' and cue.review_status!='reviewed':
+                        cue.text=reflow_japanese(cue.text,self.rules.jp_line,self.rules.max_lines)
             return {'track':asdict(track)}
         final=track_from(self.stage('jp-layout',layout)['track'])
         exported=self.stage('jp-export',lambda f:self.export(f,final))
@@ -696,6 +717,8 @@ class PipelineRunner:
         report['asr_failures']=self.state.get('asr_failures',[])
         jp_review=self.folder/'jp-review/result.json'
         report['jp_review']=read_json(jp_review) if jp_review.is_file() else None
+        for name,key in [('jp_adaptive','jp-adaptive'),('jp_alignment','jp-align')]:
+            path=self.folder/key/'result.json';report[name]=read_json(path) if path.is_file() else None
         context_path=self.folder/'jp-context/result.json'
         report['jp_context']=read_json(context_path) if context_path.is_file() else None
         scan_path=self.folder/'asr-scan/result.json'

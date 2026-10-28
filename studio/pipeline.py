@@ -58,6 +58,10 @@ def plan(config):
             stages.append(('jp-review','Review oryginału JP • porównanie i składanie fraz'))
         if config.get('jp_context_review'):
             stages.append(('jp-context','Japanese scene context • words, names and ASR recommendations'))
+        if config.get('adaptive_retry',{}).get('enabled'):
+            stages.append(('jp-adaptive','Adaptive audio • short/wide context and quiet boundaries'))
+        if config.get('jp_alignment',{}).get('enabled'):
+            stages.append(('jp-align','Final text • forced audio alignment and phrase splitting'))
         stages.extend([('jp-layout','Układ napisów JP'),('jp-export','Eksport JP i raport wycinków')])
         return [{'id':key,'label':label,'status':'pending'} for key,label in stages]
     stages = [('audio','Przygotowanie audio')]
@@ -109,6 +113,22 @@ def validate_config(config):
     if config.get('jp_context_review') and (not jp_only or not config.get('source_review_version') or not config.get('judge_model')):
         raise ValueError('JP context review requires source review and a local review model')
     if config.get('source_review_version')==3 and not jp_only: raise ValueError('Source review v3 is a transcription-only workflow')
+    adaptive=config.get('adaptive_retry',{});alignment=config.get('jp_alignment',{})
+    for options in (adaptive,alignment):
+        if not isinstance(options,dict) or type(options.get('enabled',False)) is not bool:raise ValueError('Invalid audio refinement option')
+        if options.get('enabled') and not jp_only:raise ValueError('Audio refinement requires Japanese-only mode')
+    if adaptive.get('enabled'):
+        aux=config.get('retry_asr',{}).get('auxiliary')
+        if config.get('source_review_version')!=3 or not config.get('retry_asr',{}).get('enabled') or not aux:
+            raise ValueError('Adaptive context requires source review v3 and auxiliary audio retries')
+        if aux['engine'] not in (1,2,3) or Path(aux['model']).resolve()==Path(config['asr'][0]['model']).resolve():
+            raise ValueError('Adaptive context requires distinct model weights')
+        value=adaptive.get('max_targets',4)
+        if type(value) is not int or not 1<=value<=12:raise ValueError('Invalid adaptive context budget')
+    if alignment.get('enabled'):
+        value=alignment.get('max_shift_ms',1500)
+        if type(value) is not int or not 100<=value<=3000 or type(alignment.get('split',True)) is not bool:
+            raise ValueError('Invalid final alignment limits')
     if config.get('asr_failure_policy','stop') not in {'stop','continue'}:
         raise ValueError('Nieprawidłowa polityka błędów ASR.')
     if type(config.get('decision_batch_size',1)) is not int or not 1<=config.get('decision_batch_size',1)<=6:
@@ -146,6 +166,7 @@ def asset_identities(config):
         if (item['engine']==1 or config.get('source_guard') and any(tag in Path(item['model']).name.lower() for tag in ('kotoba','anime-whisper'))) and settings['crisp_aligner']:
             paths.append(settings['crisp_aligner'])
     if config.get('transcription_only'):
+        if config.get('jp_alignment',{}).get('enabled'):paths.append(settings['crisp_aligner'])
         auxiliary=config.get('retry_asr',{}).get('auxiliary')
         if config.get('retry_asr',{}).get('enabled'):
             for item in (auxiliary,config.get('retry_asr',{}).get('third')):

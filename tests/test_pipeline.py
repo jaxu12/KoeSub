@@ -669,3 +669,64 @@ def test_v3_validation_and_context_assets_preserve_old_jp_no_llm(config,tmp_path
     config['jp_context_review']=True
     assert str(Path(config['judge_model']).resolve()) in {a['path'] for a in asset_identities(config)}
     assert [s['id'] for s in plan(config)][-3:]==['jp-context','jp-layout','jp-export']
+
+
+@pytest.mark.parametrize('operational_failure',[False,True])
+def test_audio_refinement_pipeline_releases_llm_preserves_manual_times_and_resumes(config,tmp_path,monkeypatch,operational_failure):
+    from studio import adaptive_asr,audio_alignment,jp_context_review,native_session
+    from studio.pipeline import track_from
+    auxiliary={**config['asr'][1],'vad':True};config['asr']=[{**config['asr'][0],'vad':True}]
+    config['settings'].update(crisp_vad=config['media'],crisp_aligner=config['media'])
+    config.update(backend='lmstudio',transcription_only=True,source_review_version=3,translations=[],jp_context_review=True,
+        adaptive_retry={'enabled':True,'max_targets':1},jp_alignment={'enabled':True,'split':True},
+        retry_asr={'enabled':True,'auxiliary':auxiliary})
+    base=Track('fixture',[Segment(0,2500,'手動の字幕です。',status='manual'),Segment(3000,5500,'日本語です。')])
+    monkeypatch.setattr(PipelineRunner,'audio',lambda *a:{'audio':config['media']})
+    monkeypatch.setattr(PipelineRunner,'asr',lambda *a:{'track':asdict(base),'confidence':{}})
+    monkeypatch.setattr(jp_context_review,'review_context',lambda runner,folder,review:{
+        'track':asdict(clone_track(track_from(review['track']),'context')),'flags':[],'review':review})
+    calls=[]
+    class Session:
+        closed=False
+        def close(self):self.closed=True
+    session=Session();token=native_session.ACTIVE.set(session)
+    def adaptive(runner,folder,source,*args):
+        assert session.closed;calls.append('adaptive')
+        return {'track':asdict(clone_track(source,'adaptive')),'changes':[],'windows':[]}
+    def align(runner,folder,source,audio):
+        assert session.closed;calls.append('align')
+        if operational_failure:raise RuntimeError('CUDA out of memory')
+        entries=[{'text':s.text,'start':(s.start+100)/1000,'end':(s.end-100)/1000,
+            'words':[{'word':s.text,'start':(s.start+100)/1000,'end':(s.end-100)/1000}]} for s in source.segments]
+        return audio_alignment.apply_alignment(source,entries,0,6000,runner.rules,runner.config['jp_alignment'])
+    monkeypatch.setattr(adaptive_asr,'adaptive_retry',adaptive);monkeypatch.setattr(audio_alignment,'align_final',align)
+    create_run(config,tmp_path/'refinement');manifest=tmp_path/'refinement/manifest.json'
+    try:
+        if operational_failure:
+            with pytest.raises(RuntimeError,match='CUDA'):run_pipeline(manifest,lambda *a,**k:None)
+            assert load_run(manifest)['status']=='failed'
+        else:
+            run_pipeline(manifest,lambda *a,**k:None)
+            final=read_json(manifest.parent/'jp-layout/result.json')['track']['segments']
+            assert (final[0]['start'],final[0]['end'],final[0]['text'],final[0]['status'])==(0,2500,base.segments[0].text,'manual')
+            assert (final[1]['start'],final[1]['end'])==(3100,5400)
+            assert calls==['adaptive','align'];calls.clear()
+            run_pipeline(manifest,lambda *a,**k:None);assert not calls
+            report=read_json(Path(config['output_dir'])/'report.json')
+            assert report['jp_alignment'] and report['jp_adaptive']
+    finally:native_session.ACTIVE.reset(token)
+
+
+@pytest.mark.parametrize('field,value',[
+    ('adaptive_retry',{'enabled':'yes'}),
+    ('adaptive_retry',{'enabled':True,'max_targets':13}),
+    ('jp_alignment',{'enabled':True,'split':'yes'}),
+    ('jp_alignment',{'enabled':True,'max_shift_ms':3001})])
+def test_invalid_audio_refinement_limits_do_not_change_legacy_plans(config,field,value):
+    config['asr']=[{**config['asr'][0],'vad':True}]
+    config.update(transcription_only=True,source_review_version=3,translations=[],
+        retry_asr={'enabled':True,'auxiliary':{'engine':1,'model':'other.gguf'}})
+    legacy=[s['id'] for s in plan(config)]
+    assert 'jp-adaptive' not in legacy and 'jp-align' not in legacy
+    config[field]=value
+    with pytest.raises(ValueError):validate_config(config)

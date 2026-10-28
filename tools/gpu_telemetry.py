@@ -11,9 +11,10 @@ from studio.core import atomic_text,read_json_file
 
 
 class GpuTelemetry:
-    def __init__(self,manifest,output):
+    def __init__(self,manifest,output,capture_processes=False):
         self.manifest=Path(manifest);self.output=Path(output)
         self.stop_event=threading.Event();self.samples=[];self.errors=[]
+        self.capture_processes=capture_processes;self.compute_processes=[]
         self.thread=threading.Thread(target=self.run,daemon=True)
 
     def start(self): self.thread.start()
@@ -34,6 +35,13 @@ class GpuTelemetry:
                     name,driver,used,total,util=(x.strip() for x in line.split(','))
                     self.samples.append({'unix_time':time.time(),'stage':stage,'name':name,'driver':driver,
                                          'memory_used_mib':int(used),'memory_total_mib':int(total),'utilization_percent':int(util)})
+                if self.capture_processes:
+                    processes=subprocess.run([executable,'--query-compute-apps=pid,process_name,gpu_uuid','--format=csv,noheader'],
+                        capture_output=True,text=True,timeout=5,creationflags=subprocess.CREATE_NO_WINDOW)
+                    if processes.returncode:raise ValueError(processes.stderr.strip())
+                    for line in processes.stdout.strip().splitlines():
+                        pid,name,gpu=(v.strip() for v in line.split(',',2))
+                        self.compute_processes.append({'unix_time':time.time(),'stage':stage,'pid':int(pid),'name':name,'gpu_uuid':gpu})
             except Exception as exc: self.errors.append(str(exc))
             self.stop_event.wait(2)
 
@@ -47,5 +55,6 @@ class GpuTelemetry:
                  for stage,values in groups.items()}
         result={'sampling_interval_seconds':2,'scope':'Whole GPU, including desktop and other processes; confirm backend using engine logs',
                 'manifest':str(self.manifest),'summary':summary,'errors':self.errors,'samples':self.samples}
+        if self.capture_processes:result['compute_processes']=self.compute_processes
         atomic_text(self.output,json.dumps(result,indent=2))
         return result

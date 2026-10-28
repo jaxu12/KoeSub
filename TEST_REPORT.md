@@ -2,7 +2,7 @@
 
 ## Current source-only verification
 
-As of 2026-10-28, **231 tests pass on a clean source-only copy**, without developer data, models or recordings, using the installed development dependencies (verified separately from GPU inference). The test temporary directory is `.pytest-tmp`, which is ignored by Git. A former `data/test-tmp` setting failed on a fresh checkout with no `data` directory and was corrected.
+As of 2026-10-28, **261 tests pass on a clean source-only copy**, without developer data, models or recordings, using the installed development dependencies (verified separately from GPU inference). The test temporary directory is `.pytest-tmp`, which is ignored by Git. A former `data/test-tmp` setting failed on a fresh checkout with no `data` directory and was corrected.
 
 The suite covers editing/undo, persistence, provenance, format round trips, time/readability checks, strict model-response validation, manual translation protection, source phrase comparison, stage ordering before EN, pause/resume, run locks, timeouts, owned child processes, caches, and Qt behavior. Unit tests do not require model weights or a GPU.
 
@@ -13,6 +13,8 @@ The source-review v2 suite also covers high-confidence disagreements, retention 
 Source review v3 adds third-decoder corroboration without auxiliary-majority override, unresolved-only routing, manual protection, grouped native output ownership, alignment-warning isolation and fail-closed attribution, fatal device failures, immutable retry receipt replay, quality failure exports, exact context-choice validation, context-only findings without transcript rewriting, scene-gap boundaries, and persistence of disabled third-model selection. See [SOURCE_REVIEW_V3.md](SOURCE_REVIEW_V3.md) for separate hardware and reference results.
 
 The source-quality evaluation suite covers unverified references, missing output denominators, paired versus unmatched listening coverage, clean versus unassessed cases, orthography versus semantic events, exact quote validation, stale evidence, corrected reference history, changed audio, concurrent saves, protected exports, default hypothesis masking and preservation of the active subtitle project. Real-data checks reuse cached ASR and test playback only; they do not certify reference accuracy. See [SOURCE_QUALITY_EVALUATION.md](SOURCE_QUALITY_EVALUATION.md).
+
+Adaptive-audio and alignment coverage includes quiet-boundary planning, distinct-context/model requirements, VAD profile limits, audio/crop hashes and receipt replay, bounded alignment blocks, punctuation/manual protection, zero-duration coalescing without interpolation, exact text preservation, global overlap avoidance, reading exposure, audio-based splitting, LLM release and fatal device errors. Hardware and cached-reference results are separated in [ADAPTIVE_AUDIO_AND_ALIGNMENT.md](ADAPTIVE_AUDIO_AND_ALIGNMENT.md).
 
 ## Historical integration checks
 
