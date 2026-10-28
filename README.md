@@ -10,9 +10,10 @@ The current priority is Japanese transcription. Optional English translation is 
 
 - Video playback, waveform navigation, cue playback, editing, undo/redo, and SQLite projects.
 - Local Whisper Large V3 inference through whisper.cpp/CrispASR, VAD, and an explicit GPU backend.
-- A one-click Japanese pipeline: **audio → baseline ASR → targeted audio retries → phrase review → layout → subtitles and report**.
+- A one-click Japanese pipeline: **audio → baseline ASR → optional full auxiliary scan → targeted retries → phrase review → layout → subtitles and report**.
 - Local comparison of ASR phrases with surrounding text and timestamps. Corroborated retries can correct a phrase while disputed text remains available for listening and comparison.
 - Protection for manually edited or reviewed cues, with source provenance and before/after records.
+- Explicit human phrase selection with saved provenance and undo. New disagreement targets cannot displace earlier low-confidence windows.
 - Timing, overlap, reading-speed, and line-length checks; SRT, ASS, SSA, and TXT support. Imported ASS/SSA styling is not preserved.
 - Optional local GGUF translation through llama.cpp; LM Studio is a secondary backend.
 - Logs, resumable stages, cancellation, and validation of completed artifacts.
@@ -59,10 +60,11 @@ Dependencies, models, and media retain their own licenses. See [THIRD_PARTY.md](
 .\.venv\Scripts\python.exe -m pytest -q
 ```
 
-The current suite contains **173 passing tests**, including a clean repository snapshot with no local data or models. It covers editing, persistence, manual-change protection, ASR comparison, phrase review, evaluation-only oracle selection, stage ordering, exports, and resume behavior. Unit tests do not require model weights or a GPU. Hardware verification scripts in `tools/` require separately prepared runtimes, models, and media.
+The current suite contains **191 passing tests**, including a clean repository snapshot with no local data or models. It covers editing, persistence, manual-change protection, ASR comparison, phrase review, evaluation-only oracle selection, stage ordering, exports, and resume behavior. Unit tests do not require model weights or a GPU. Hardware verification scripts in `tools/` require separately prepared runtimes, models, and media.
 
 Recorded experiments and their limitations:
 
+- [Auxiliary scan, editable review, additional clips, and full-movie regression checks](ASR_SCAN_REVIEW_V2.md)
 - [Ten-clip ASR/fusion benchmark and reference-guided selection opportunity](ASR_FUSION_BENCHMARK.md)
 - [Japanese phrase review and transcript fusion](JP_SOURCE_REVIEW.md)
 - [Japanese-only transcription, retries, and reference data](JP_TRANSCRIPTION_AND_REFERENCES.md)

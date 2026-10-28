@@ -51,6 +51,8 @@ def plan(config):
     if config.get('transcription_only'):
         stages=[('audio','Przygotowanie audio'),('asr-0','Baza JP • Large V3 + VAD')]
         if config.get('retry_asr',{}).get('enabled'):
+            if config['retry_asr'].get('scan_first') and config['retry_asr'].get('auxiliary'):
+                stages.append(('asr-scan','Auxiliary ASR scan • detect disagreements'))
             stages.append(('asr-retry','Podejrzane wycinki • ponowienie Large V3 i model pomocniczy'))
         if config.get('source_review_version'):
             stages.append(('jp-review','Review oryginału JP • porównanie i składanie fraz'))
@@ -79,7 +81,7 @@ def plan(config):
 
 
 def validate_config(config):
-    if config.get('source_review_version') not in (None,1):
+    if config.get('source_review_version') not in (None,1,2):
         raise ValueError('Nieobsługiwana wersja review oryginału JP.')
     jp_only=config.get('transcription_only',False)
     if jp_only:
@@ -87,6 +89,7 @@ def validate_config(config):
             raise ValueError('Tryb JP wymaga jednej bazy Whisper Large V3 GGML z VAD.')
         if config['translations']: raise ValueError('Tryb JP nie uruchamia tłumaczenia.')
         options=config.get('retry_asr',{})
+        if type(options.get('scan_first',False)) is not bool: raise ValueError('Invalid auxiliary scan option')
         for key,low,high,default in [('padding_ms',1000,10000,3000),('max_window_ms',5000,60000,30000),('max_targets',1,30,12)]:
             value=options.get(key,default)
             if type(value) is not int or not low<=value<=high: raise ValueError('Nieprawidłowy limit ponowień: '+key)

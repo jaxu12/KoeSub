@@ -2,11 +2,13 @@
 
 ## Current source-only verification
 
-As of 2026-10-28, **173 tests pass on a clean Git snapshot** without local data, models, or recordings, using the installed development dependencies. The test temporary directory is `.pytest-tmp`, which is ignored by Git. A former `data/test-tmp` setting failed on a fresh checkout with no `data` directory and was corrected.
+As of 2026-10-28, **191 tests pass on a clean Git snapshot** without local data, models, or recordings, using the installed development dependencies. The test temporary directory is `.pytest-tmp`, which is ignored by Git. A former `data/test-tmp` setting failed on a fresh checkout with no `data` directory and was corrected.
 
 The suite covers editing/undo, persistence, provenance, format round trips, time/readability checks, strict model-response validation, manual translation protection, source phrase comparison, stage ordering before EN, pause/resume, run locks, timeouts, owned child processes, caches, and Qt behavior. Unit tests do not require model weights or a GPU.
 
 The evaluation suite additionally checks exact complete-phrase oracle paths against exhaustive enumeration, exclusion of reference labels from inference inputs, weighted CER and incomplete coverage, immutability of frozen production results, original baseline timing costs, usable retry candidates, and fatal operational failures after resume. The real ten-clip CUDA benchmark and its unchanged production result are documented in [ASR_FUSION_BENCHMARK.md](ASR_FUSION_BENCHMARK.md).
+
+The source-review v2 suite also covers high-confidence disagreements, retention of baseline-risk budget, real-time scan reuse, auxiliary failure handling, original-track and stale-choice protection, saved human decisions, undo, and restoration of reused native costs. Results and limits are in [ASR_SCAN_REVIEW_V2.md](ASR_SCAN_REVIEW_V2.md).
 
 ## Historical integration checks
 

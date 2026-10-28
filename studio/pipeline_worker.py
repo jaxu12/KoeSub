@@ -313,12 +313,16 @@ class PipelineRunner:
     def retry_decode(self,folder,item,audio,start,end):
         return self.asr(folder,item,audio,range_start=start,range_duration=end-start)
 
-    def retry_asr(self,folder,base,audio,confidence):
-        from .asr_retry import retry_windows,consensus
+    def retry_asr(self,folder,base,audio,confidence,scan=None):
+        from .asr_retry import retry_windows,consensus,suspects
+        from .asr_disagreement import disagreement_targets,reuse_scan
         options=self.config['retry_asr']
+        primary_ids={s['id'] for s in suspects(base,confidence)}
+        targets=disagreement_targets(base,track_from(scan['track'])) if scan and scan.get('usable',True) else []
         windows,skipped=retry_windows(base,confidence,self.config['start'],self.config['start']+self.config['duration'],
-            options.get('padding_ms',3000),options.get('max_window_ms',30000),options.get('max_targets',12))
-        source=digest(asdict(base));partial=folder/'partial.json'
+            options.get('padding_ms',3000),options.get('max_window_ms',30000),options.get('max_targets',12),targets)
+        source=digest([asdict(base),scan]) if scan is not None else digest(asdict(base))
+        partial=folder/'partial.json'
         state=read_json(partial) if partial.exists() else {'source':source,'windows':[]}
         if state['source']!=source: raise ValueError('Zmieniono bazę ponawiania ASR.')
         baseline=self.config['asr'][0];auxiliary=options.get('auxiliary')
@@ -351,13 +355,18 @@ class PipelineRunner:
                 else:
                     started=time.monotonic()
                     self.event('phase',message=f'Wycinek {len(state["windows"])+1}/{len(windows)} • {item["name"]} • {window["start"]/1000:.2f}–{window["end"]/1000:.2f} s')
-                    try:
-                        value=self.retry_decode(attempt_dir,item,wav,window['start'],window['end'])
-                        scores=list(value.get('confidence',{}).values())
-                        value.update(usable=True,mean_confidence=sum(s['mean'] for s in scores)/len(scores) if scores else None)
-                    except AsrQualityError as exc:
-                        value={'usable':False,'error':str(exc)}
-                    value.update(model=item['model'],name=item['name'],seconds=round(time.monotonic()-started,3),directory=str(attempt_dir))
+                    # Preserve the established local-context retry for baseline
+                    # risk cues; scan reuse is for additional disagreement work.
+                    primary_window=bool(primary_ids.intersection(window['cue_ids']))
+                    value=reuse_scan(window,scan,item,self.folder/'asr-scan') if index==1 and not primary_window else None
+                    if value is None:
+                        try:
+                            value=self.retry_decode(attempt_dir,item,wav,window['start'],window['end'])
+                            scores=list(value.get('confidence',{}).values())
+                            value.update(usable=True,mean_confidence=sum(s['mean'] for s in scores)/len(scores) if scores else None)
+                        except AsrQualityError as exc:
+                            value={'usable':False,'error':str(exc)}
+                        value.update(model=item['model'],name=item['name'],seconds=round(time.monotonic()-started,3),directory=str(attempt_dir))
                     write_json(path,{'identity':identity,'result':value,'digest':digest(value)})
                 attempts.append(value)
             accepted,reason=consensus(window,attempts)
@@ -384,22 +393,31 @@ class PipelineRunner:
                 if skipped_item['id'] in cue.parents:
                     cue.notes.append('ASR: wycinek nieponowiony — '+skipped_item['reason'])
         result.segments.sort(key=lambda s:(s.start,s.end))
-        return {'track':asdict(result),'windows':state['windows'],'skipped':skipped,'changes':changes,
+        return {'track':asdict(result),'windows':state['windows'],'skipped':skipped,'changes':changes,'disagreements':targets,
                 'baseline_retained_without_consensus':True,'scope':'Audio-only retries; no translation or LLM selection'}
 
     def run_jp(self):
         audio=self.stage('audio',self.audio)['audio']
         raw=self.stage('asr-0',lambda f:self.asr(f,self.config['asr'][0],audio))
         base=track_from(raw['track']);final=base
+        scan=None
+        options=self.config.get('retry_asr',{})
+        self.state['asr_failures']=[]
+        if options.get('enabled') and options.get('scan_first') and options.get('auxiliary'):
+            scan=self.stage('asr-scan',lambda f:self.attempt_asr(f,options['auxiliary'],audio))
+            if not scan.get('usable',True): self.state['asr_failures'].append(scan['asr_failure'])
         if self.config.get('retry_asr',{}).get('enabled'):
-            result=self.stage('asr-retry',lambda f:self.retry_asr(f,base,audio,raw.get('confidence',{})))
+            result=self.stage('asr-retry',lambda f:self.retry_asr(f,base,audio,raw.get('confidence',{}),scan)
+                if scan is not None else self.retry_asr(f,base,audio,raw.get('confidence',{})))
             final=track_from(result['track'])
             self.state['asr_retry_windows']=len(result['windows']);self.state['asr_retry_changes']=len(result['changes'])
+            self.state['jp_scan_disagreements']=len(result.get('disagreements',[]))
+            self.state['jp_reused_scan_attempts']=sum(a.get('reused_from')=='asr-scan' for w in result['windows'] for a in w['attempts'])
         if self.config.get('source_review_version'):
             from .asr_review import review_fragments
             reviewed=self.stage('jp-review',lambda f:review_fragments(base,
                 result['windows'] if self.config.get('retry_asr',{}).get('enabled') else [],
-                raw.get('confidence',{}),self.config['asr'][0]['model']))
+                raw.get('confidence',{}),self.config['asr'][0]['model'],version=self.config['source_review_version']))
             final=track_from(reviewed['track'])
             self.state['jp_review_changes']=len(reviewed['changes'])
             self.state['jp_review_changed_cues']=reviewed['changed_cues']
@@ -411,7 +429,7 @@ class PipelineRunner:
             return {'track':asdict(track)}
         final=track_from(self.stage('jp-layout',layout)['track'])
         exported=self.stage('jp-export',lambda f:self.export(f,final))
-        self.state.update(status='needs_review' if exported['warnings'] or exported['blocked_exports'] else 'completed',
+        self.state.update(status='needs_review' if exported['warnings'] or exported['blocked_exports'] or exported.get('degraded_asr') else 'completed',
             finished=now(),final_track=final.id,warnings=exported['warnings'],exports=exported['paths'])
         self.save();self.event('pipeline_state',manifest=str(self.path));self.event('pipeline_done',manifest=str(self.path))
 
@@ -662,6 +680,10 @@ class PipelineRunner:
         report['asr_failures']=self.state.get('asr_failures',[])
         jp_review=self.folder/'jp-review/result.json'
         report['jp_review']=read_json(jp_review) if jp_review.is_file() else None
+        scan_path=self.folder/'asr-scan/result.json'
+        report['asr_scan']=read_json(scan_path) if scan_path.is_file() else None
+        report['jp_scan_disagreements']=self.state.get('jp_scan_disagreements',0)
+        report['jp_reused_scan_attempts']=self.state.get('jp_reused_scan_attempts',0)
         if self.config.get('transcription_only'):
             retry=self.folder/'asr-retry/result.json'
             report['asr_retry']=read_json(retry) if retry.exists() else None

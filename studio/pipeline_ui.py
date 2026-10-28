@@ -141,6 +141,10 @@ class PipelinePanel(QWidget):
         self.retry_limit=QSpinBox();self.retry_limit.setRange(1,30);self.retry_limit.setValue(12);self.retry_limit.setSuffix(' wycinków maks.')
         for widget in (self.retry_clips,self.retry_aux,self.retry_context,self.retry_limit):retry_row.addWidget(widget)
         layout.addLayout(retry_row)
+        self.scan_first=QCheckBox('Compare the whole recording with auxiliary ASR before selecting retries')
+        self.scan_first.setChecked(True)
+        self.scan_first.setToolTip('Find disagreements even when the baseline is confident. Adds a full auxiliary pass and may select more retries. Complete scan cues are reused; the retry-window limit bounds further work.')
+        layout.addWidget(self.scan_first)
         self.film_context=QCheckBox('Kontekst całego filmu • temat, terminy i spójność dialogów')
         self.film_context.setChecked(True)
         layout.addWidget(self.film_context)
@@ -177,7 +181,7 @@ class PipelinePanel(QWidget):
         layout.addWidget(self.stages,1)
         self.inputs += [self.preset,self.backend,self.review,self.review_action,self.asr_count,self.en_count,self.judge,
                         self.start,self.length,self.autosplit,self.export,self.export_format,self.sound,self.pause,self.film_context,self.continue_asr,self.readability,
-                        self.transcription_only,self.retry_clips,self.retry_aux,self.retry_context,self.retry_limit]
+                        self.transcription_only,self.retry_clips,self.retry_aux,self.retry_context,self.retry_limit,self.scan_first]
         self.asr_count.valueChanged.connect(self.show_rows)
         self.en_count.valueChanged.connect(self.show_rows)
         self.asr_count.valueChanged.connect(self.update_preset_label)
@@ -202,10 +206,11 @@ class PipelinePanel(QWidget):
         self.autosplit.setEnabled(not jp and not self.owner.busy)
         self.pause.setEnabled(not jp and not self.owner.busy)
         self.vad[0].setEnabled(not jp and not self.owner.busy)
-        self.continue_asr.setEnabled(not jp and not self.owner.busy)
+        self.continue_asr.setEnabled(not self.owner.busy)
         self.readability.setText('Popraw układ JP • bez przesuwania czasów' if jp else 'Popraw układ JP/EN i wydłuż ekspozycję do 250 ms w wolnych przerwach')
         self.export.setText('Eksport JP' if jp else 'Eksport JP / EN')
-        for widget in (self.retry_clips,self.retry_aux,self.retry_context,self.retry_limit):widget.setVisible(jp)
+        for widget in (self.retry_clips,self.retry_aux,self.retry_context,self.retry_limit,self.scan_first):widget.setVisible(jp)
+        self.scan_first.setEnabled(jp and self.retry_clips.isChecked() and not self.owner.busy)
         self.retry_aux.setEnabled(jp and self.retry_clips.isChecked() and not self.owner.busy)
         self.retry_context.setEnabled(jp and self.retry_clips.isChecked() and not self.owner.busy)
         self.retry_limit.setEnabled(jp and self.retry_clips.isChecked() and not self.owner.busy)
@@ -215,8 +220,9 @@ class PipelinePanel(QWidget):
         config = {'asr':[combo.currentData() or {'name':'wybierz model'} for combo in self.asr_models[:self.asr_count.value()]],
                   'translations':[{'variant':v.currentData()} for v in self.variants[:self.en_count.value()]],
                   'review':self.review.currentData(),'review_action':self.review_action.currentData(),'film_context':self.film_context.isChecked(),
-                  'source_review_version':1}
-        config.update(transcription_only=self.transcription_only.isChecked(),retry_asr={'enabled':self.retry_clips.isChecked()})
+                  'source_review_version':2 if self.transcription_only.isChecked() else 1}
+        config.update(transcription_only=self.transcription_only.isChecked(),retry_asr={'enabled':self.retry_clips.isChecked(),
+            'scan_first':self.scan_first.isChecked(),'auxiliary':self.retry_aux.currentData()})
         steps = plan(config)
         self.stages.setRowCount(len(steps))
         for row,stage in enumerate(steps):
@@ -340,6 +346,7 @@ class PipelinePanel(QWidget):
                     widget.setChecked(prefs[key])
             self.transcription_only.setChecked(prefs.get('transcription_only',not bool(prefs.get('translations'))))
             self.retry_clips.setChecked(prefs.get('retry_clips',True))
+            self.scan_first.setChecked(prefs.get('scan_first',True))
             self.retry_context.setValue(prefs.get('retry_context',3))
             self.retry_limit.setValue(prefs.get('retry_limit',12))
             saved_aux=prefs.get('retry_aux_model')
@@ -381,7 +388,7 @@ class PipelinePanel(QWidget):
                   'review':self.review.currentData(),'review_action':self.review_action.currentData(),
                   'film_context':self.film_context.isChecked() and not jp_only,
                   'transcription_only':jp_only,
-                  'source_review_version':1,
+                  'source_review_version':2 if jp_only else 1,
                   'asr_failure_policy':'continue' if self.continue_asr.isChecked() else 'stop',
                   'decision_batch_size':4,'source_guard':True,'readability_repair':self.readability.isChecked(),
                   'llm_keep_loaded':Path(settings['llm_exe']).with_name('llama-server.exe').is_file() if settings['llm_exe'] else False,
@@ -395,7 +402,8 @@ class PipelinePanel(QWidget):
             auxiliary={**self.retry_aux.currentData(),'vad':True} if self.retry_aux.currentData() else None
             config.update(review='rules',llm_keep_loaded=False,judge_model='',autosplit=False,
                 retry_asr={'enabled':self.retry_clips.isChecked(),'padding_ms':round(self.retry_context.value()*1000),
-                           'max_window_ms':30000,'max_targets':self.retry_limit.value(),'auxiliary':auxiliary})
+                           'max_window_ms':30000,'max_targets':self.retry_limit.value(),'auxiliary':auxiliary,
+                           'scan_first':self.scan_first.isChecked()})
         validate_config(config)
         if config['backend']=='embedded' and not jp_only:
             from .embedded_llm import model_identity
@@ -430,7 +438,7 @@ class PipelinePanel(QWidget):
             owner.project.pipeline_prefs['readability_repair']=config['readability_repair']
             owner.project.pipeline_prefs['export_format']=self.export_format.currentData()
             owner.project.pipeline_prefs.update(transcription_only=config['transcription_only'],retry_clips=self.retry_clips.isChecked(),
-                retry_context=self.retry_context.value(),retry_limit=self.retry_limit.value())
+                retry_context=self.retry_context.value(),retry_limit=self.retry_limit.value(),scan_first=self.scan_first.isChecked())
             owner.project.pipeline_prefs['retry_aux_model']=(self.retry_aux.currentData() or {}).get('model')
             owner.job = {'id':run_id,'type':'pipeline','status':'running','created':now(),
                          'manifest':str(folder/'manifest.json'),'track_hashes':{},'stage_tracks':{}}
@@ -475,6 +483,9 @@ class PipelinePanel(QWidget):
         self.context_label.setToolTip(context+'\n\n'+state.get('continuity_notes',''))
         if state['config'].get('transcription_only'):
             self.context_label.setText('Large V3 + VAD → ponowienia audio → review i składanie zgodnych fraz JP → SRT. Sporne frazy do odsłuchu. Bez tłumaczenia i bez LLM.')
+            if state['config'].get('retry_asr',{}).get('scan_first'):
+                self.context_label.setText(f'Baseline + auxiliary scan → disagreements → audio retries → JP review. '
+                    f'Disputed cues: {state.get("jp_scan_disagreements",0)}; reused scan fragments: {state.get("jp_reused_scan_attempts",0)}.')
         self.stages.setRowCount(len(state['stages']))
         labels = {'pending':'Oczekuje','running':'Przetwarzanie','completed':'Gotowe','failed':'Błąd'}
         rejected={f['stage'] for f in state.get('asr_failures',[])}
@@ -640,6 +651,43 @@ class PipelinePanel(QWidget):
             table.setRowHeight(row,115)
         table.cellDoubleClicked.connect(lambda row,col:self.owner.play_interval(fragments[row]['start'],fragments[row]['end']))
         layout.addWidget(table)
+        selection_row=QHBoxLayout();alternatives_combo=QComboBox()
+        alternatives_combo.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
+        alternatives_combo.setMinimumContentsLength(25)
+        apply_choice=QPushButton('Use selected ASR phrase');play_choice=QPushButton('Listen to selected cue')
+        choice_status=text_label('Choose a row and an ASR alternative. Human choices are saved with provenance and can be undone.')
+        for widget in (alternatives_combo,apply_choice,play_choice):selection_row.addWidget(widget)
+        layout.addLayout(selection_row);layout.addWidget(choice_status)
+        def update_choices(*_):
+            row=table.currentRow();alternatives_combo.clear()
+            if row>=0:
+                alternatives_combo.addItem('Original baseline • '+fragments[row]['before'],-1)
+                for index,alternative in enumerate(fragments[row]['alternatives']):
+                    if alternative['text'] and alternative['usable'] and alternative['temporal']:
+                        alternatives_combo.addItem(alternative['name']+' • '+alternative['text'],index)
+            apply_choice.setEnabled(row>=0 and alternatives_combo.count()>0 and not self.owner.busy)
+            play_choice.setEnabled(row>=0)
+        def choose():
+            def operation():
+                from .source_choices import choice_preview
+                from .core import invalidate
+                if self.owner.busy:raise ValueError('Wait for the running task to finish')
+                self.owner.editor_tools.commit()
+                job=self.last_job()
+                if not job:raise ValueError('No pipeline job in this project')
+                preview=choice_preview(self.owner.project,result,table.currentRow(),alternatives_combo.currentData(),job)
+                if preview is None:return
+                self.owner.checkpoint();target=preview['target'];target.text=preview['text']
+                invalidate(target);target.status='manual';target.source='manual-asr-choice'
+                target.notes.append('Human-selected ASR phrase; source: '+preview['record']['model'])
+                job.setdefault('manual_source_choices',[]).append(preview['record'])
+                self.owner.changed('manual source phrase choice')
+                choice_status.setText('Applied to the active track. Undo is available; export again to update subtitle files.')
+            self.owner.guarded(operation)
+        table.currentCellChanged.connect(update_choices);apply_choice.clicked.connect(choose)
+        play_choice.clicked.connect(lambda:self.owner.play_interval(fragments[table.currentRow()]['start'],fragments[table.currentRow()]['end']))
+        update_choices()
+        self.source_choice_combo=alternatives_combo;self.source_choice_button=apply_choice
         if not fragments: layout.addWidget(text_label('Brak lokalnych różnic do oceny w dostępnych hipotezach. Nie oznacza to, że transkrypcja jest bezbłędna.'))
         buttons=QDialogButtonBox(QDialogButtonBox.StandardButton.Close);buttons.rejected.connect(dialog.reject);layout.addWidget(buttons)
         dialog.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose);dialog.show();self.retry_dialog=dialog

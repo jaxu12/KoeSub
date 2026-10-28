@@ -223,7 +223,8 @@ def test_jp_scope_needs_no_translator_and_fixes_baseline_vad(window,tmp_path):
     assert config['transcription_only'] and config['translations']==[] and not config['llm_keep_loaded']
     assert config['asr'][0]['model']==str(base) and config['asr'][0]['vad']
     assert config['retry_asr']['auxiliary']['model']==str(aux)
-    assert [s['id'] for s in plan(config)]==['audio','asr-0','asr-retry','jp-review','jp-layout','jp-export']
+    assert config['source_review_version']==2 and config['retry_asr']['scan_first']
+    assert [s['id'] for s in plan(config)]==['audio','asr-0','asr-scan','asr-retry','jp-review','jp-layout','jp-export']
 
 
 def test_retry_comparison_dialog_keeps_alternatives_and_plays_range(window,tmp_path,app):
@@ -260,6 +261,32 @@ def test_source_review_dialog_exposes_local_changes_provenance_and_audio(window,
     assert table.item(row,2).text()=='いつでも' and 'ZMIENIONO' in table.item(row,5).text()
     assert 'Kontekst:' in table.item(row,1).toolTip() and 'kotoba.bin' in table.item(row,4).text()
     table.cellDoubleClicked.emit(row,0);assert played==[(1100,5000)]
+    p.retry_dialog.close();app.processEvents()
+
+
+def test_human_source_phrase_selection_is_persistent_and_undoable(window,tmp_path,app):
+    from tests.test_asr_review import example
+    from studio.asr_review import review_fragments
+    from studio.pipeline import track_from,clone_track
+    from studio.pipeline_worker import write_json
+    from PySide6.QtWidgets import QTableWidget
+    w,errors=window;base,source,scores=example();result=review_fragments(base,[source],scores,'large.bin')
+    reviewed=track_from(result['track']);final=clone_track(reviewed,'final')
+    w.project=Project(duration=6000);w.project.add_track(base);w.project.add_track(reviewed);w.project.add_track(final)
+    folder=tmp_path/'run';(folder/'jp-review').mkdir(parents=True)
+    w.project.jobs=[{'type':'pipeline','manifest':str(folder/'manifest.json'),'status':'completed'}]
+    write_json(folder/'jp-review/result.json',result)
+    w.refresh();p=w.pipeline_panel;p.show_retry_results();app.processEvents()
+    table=p.retry_dialog.findChild(QTableWidget)
+    row=next(i for i,f in enumerate(result['fragments']) if f['before']=='の開発度')
+    table.selectRow(row);p.source_choice_combo.setCurrentIndex(p.source_choice_combo.findData(1))
+    old=w.project.active.segments[1].text;p.source_choice_button.click();app.processEvents()
+    assert not errors and '国配列堂' in w.project.active.segments[1].text
+    assert w.project.jobs[0]['manual_source_choices'][0]['model']=='kotoba.bin'
+    assert ProjectStore(w.store.path).load().jobs[0]['manual_source_choices'][0]['model']=='kotoba.bin'
+    assert w.project.active.segments[1].review_status=='unreviewed'
+    w.undo();assert w.project.active.segments[1].text==old
+    assert not w.project.jobs[0].get('manual_source_choices')
     p.retry_dialog.close();app.processEvents()
 
 

@@ -47,8 +47,19 @@ def suspects(track,confidence):
     return sorted(result,key=lambda item:(-item['priority'],item['start']))
 
 
-def retry_windows(track,confidence,start,end,padding=3000,max_window=30000,max_targets=12):
+def retry_windows(track,confidence,start,end,padding=3000,max_window=30000,max_targets=12,additional_targets=()):
     selected=suspects(track,confidence)
+    if additional_targets:
+        merged={s['id']:s for s in selected}
+        primary=[s['id'] for s in selected]
+        for extra in additional_targets:
+            if extra['id'] in merged:
+                old=merged[extra['id']]
+                old.update(signals=sorted(set(old.get('signals',[])+extra.get('signals',[]))),
+                    reasons=old['reasons']+extra['reasons'])
+            else: merged[extra['id']]=extra
+        extras=sorted((v for key,v in merged.items() if key not in primary),key=lambda item:(-item['priority'],item['start']))
+        selected=[merged[key] for key in primary]+extras
     windows=[];covered=set();skipped=[]
     for item in selected:
         if item['id'] in covered: continue

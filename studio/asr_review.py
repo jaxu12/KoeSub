@@ -11,7 +11,7 @@ import math
 from .core import normalize
 from .pipeline import clone_track
 
-VERSION = 1
+VERSION = 2
 
 
 def _surface(cues):
@@ -62,7 +62,8 @@ def _model(path):
     return str(path or '').replace('\\', '/').casefold()
 
 
-def review_fragments(base, windows, confidence, baseline_model):
+def review_fragments(base, windows, confidence, baseline_model,version=1):
+    if version not in (1,2): raise ValueError('Unsupported source review version')
     result = clone_track(base, 'Pipeline • review transkrypcji JP')
     targets = {s.parents[0]: s for s in result.segments}
     originals = {s.id: s for s in base.segments}
@@ -121,6 +122,7 @@ def review_fragments(base, windows, confidence, baseline_model):
                     'anchored': available and _anchors(opcodes, start, end), 'temporal': temporal,
                     'directory': attempt.get('directory', ''), 'usable': valid})
             baseline_score = confidence.get(cue.id, {})
+            disagreement=version>=2 and any(s['id']==cue.id and 'asr_disagreement' in s.get('signals',[]) for s in window.get('suspects',[]))
             usable = [a for a in alternatives if a['usable']]
             candidate = alternatives[0] if alternatives else {}
             same = (len(usable) >= 2 and len({_model(a['model']) for a in usable if a['model']}) >= 2
@@ -132,7 +134,7 @@ def review_fragments(base, windows, confidence, baseline_model):
             if structural: reason = 'Dodanie tekstu lub zmiana przez granice napisów — wymaga odsłuchu'
             elif cue.status == 'manual' or cue.review_status == 'reviewed': reason = 'Ręcznie sprawdzony tekst — bez zmian'
             elif not same: pass
-            elif not (baseline_score.get('mean', 1) < .78 or baseline_score.get('low_ratio', 0) >= .2):
+            elif not (disagreement or baseline_score.get('mean', 1) < .78 or baseline_score.get('low_ratio', 0) >= .2):
                 reason = 'Baza bez sygnału niskiej pewności; propozycja do odsłuchu'
             elif candidate.get('confidence') is None or not math.isfinite(candidate['confidence']) or candidate['confidence'] < .8:
                 reason = 'Brak wystarczającej pewności ponowienia bazy'
@@ -168,6 +170,6 @@ def review_fragments(base, windows, confidence, baseline_model):
     for cue_id in unresolved:
         if cue_id in targets and originals[cue_id].status != 'manual' and originals[cue_id].review_status != 'reviewed':
             targets[cue_id].notes.append('ASR: nierozstrzygnięte różnice fraz — porównaj hipotezy i odsłuchaj')
-    return {'version': VERSION, 'track': asdict(result), 'fragments': records,
+    return {'version': version, 'track': asdict(result), 'fragments': records,
             'changes': [r for r in records if r['applied']], 'changed_cues': len({r['cue_id'] for r in records if r['applied']}),
             'scope': 'JP source review before translation; text-only comparison of audio-derived hypotheses; agreement can be wrong'}

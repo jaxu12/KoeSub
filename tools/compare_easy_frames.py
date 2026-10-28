@@ -30,7 +30,7 @@ def compare(manifest):
     state = read_json(manifest)
     root = Path(manifest).parent
     tracks = {stage: read_json(root / stage / 'result.json')['track']['segments']
-              for stage in ('asr-0', 'asr-1', 'asr-2', 'merge-1', 'merge-2', 'jp-review', 'jp-layout', 'choose-en', 'layout')
+              for stage in ('asr-0', 'asr-1', 'asr-2', 'asr-scan', 'merge-1', 'merge-2', 'jp-review', 'jp-layout', 'choose-en', 'layout')
               if (root / stage / 'result.json').exists() and 'track' in read_json(root / stage / 'result.json')}
     rows = []
     for seconds, jp, meaning in REFERENCE:

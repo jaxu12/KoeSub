@@ -543,6 +543,60 @@ def test_jp_source_review_pipeline_applies_local_phrases_and_resumes(config,tmp_
     with pytest.raises(ValueError,match='jp-review'):run_pipeline(manifest,lambda *a,**kw:None)
 
 
+def test_disagreement_scan_reuses_auxiliary_cues_and_resumes(config,tmp_path,monkeypatch):
+    from tests.test_asr_review import example
+    base,window,_=example();score={s.id:{'mean':.99,'low_ratio':0} for s in base.segments}
+    scan=window['attempts'][1]
+    scan['model']=config['asr'][1]['model']
+    window['attempts'][0]['model']=config['asr'][0]['model']
+    config.update(transcription_only=True,source_review_version=2,translations=[],asr_failure_policy='continue',
+                  retry_asr={'enabled':True,'scan_first':True,'auxiliary':{**config['asr'][1],'vad':True}})
+    config['asr']=[{**config['asr'][0],'vad':True}];config['settings']['crisp_vad']=config['media']
+    config['settings']['crisp_aligner']=config['media']
+    calls=[]
+    monkeypatch.setattr(PipelineRunner,'audio',lambda *a:{'audio':config['media']})
+    def asr(self,folder,item,audio):
+        calls.append(folder.name)
+        return scan if folder.name=='asr-scan' else {'track':asdict(base),'confidence':score}
+    def retry(self,folder,item,audio,start,end):
+        calls.append('retry-'+item['name']);return window['attempts'][0]
+    monkeypatch.setattr(PipelineRunner,'asr',asr);monkeypatch.setattr(PipelineRunner,'retry_decode',retry)
+    monkeypatch.setattr(PipelineRunner,'call',lambda self,args,*a:Path(args[-1]).write_bytes(b'cached audio'))
+    create_run(config,tmp_path/'run');manifest=tmp_path/'run/manifest.json'
+    run_pipeline(manifest,lambda *a,**kw:None);state=load_run(manifest)
+    assert calls==['asr-0','asr-scan','retry-Whisper']
+    assert state['jp_scan_disagreements'] and state['jp_reused_scan_attempts']==1
+    assert state['jp_review_changes']==2
+    calls.clear();run_pipeline(manifest,lambda *a,**kw:None);assert not calls
+
+
+@pytest.mark.parametrize('operational',[False,True])
+def test_jp_auxiliary_scan_failure_is_reported_without_hiding_device_failures(config,tmp_path,monkeypatch,operational):
+    from studio.pipeline_worker import AsrQualityError
+    auxiliary={**config['asr'][1],'vad':True}
+    config.update(transcription_only=True,source_review_version=2,translations=[],asr_failure_policy='continue',
+                  retry_asr={'enabled':True,'scan_first':True,'auxiliary':auxiliary})
+    config['asr']=[{**config['asr'][0],'vad':True}]
+    config['settings'].update(crisp_vad=config['media'],crisp_aligner=config['media'])
+    base=Track('base',[Segment(0,5500,'日本語の文章です。')])
+    monkeypatch.setattr(PipelineRunner,'audio',lambda *a:{'audio':config['media']})
+    def asr(self,folder,item,audio):
+        if folder.name=='asr-scan':
+            if operational:raise RuntimeError('CUDA out of memory')
+            raise AsrQualityError('bad auxiliary alignment')
+        return {'track':asdict(base),'confidence':{base.segments[0].id:{'mean':.99}}}
+    monkeypatch.setattr(PipelineRunner,'asr',asr)
+    create_run(config,tmp_path/'run');manifest=tmp_path/'run/manifest.json'
+    if operational:
+        with pytest.raises(RuntimeError,match='out of memory'):run_pipeline(manifest,lambda *a,**kw:None)
+    else:
+        run_pipeline(manifest,lambda *a,**kw:None);state=load_run(manifest)
+        assert state['status']=='needs_review' and len(state['asr_failures'])==1
+        report=read_json(Path(config['output_dir'])/'report.json')
+        assert report['status']==state['status'] and report['asr_failures']
+        assert read_json(tmp_path/'run/jp-layout/result.json')['track']['segments'][0]['text']==base.segments[0].text
+
+
 def test_invalid_utf8_asr_is_a_quality_rejection_not_a_silent_recode(config,tmp_path,monkeypatch):
     from studio import pipeline_worker
     from studio.pipeline_worker import AsrQualityError

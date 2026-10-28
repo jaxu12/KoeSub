@@ -14,9 +14,11 @@ KoeSub is a working Windows/PySide6 prototype. The current focus is Japanese sou
 
 ## Verification
 
-The current suite has **173 passing tests**, including a clean source snapshot without developer data or models. Hardware experiments use separately prepared assets; they are not part of the unit-test suite.
+Source review v2 adds a full auxiliary disagreement scan, protects earlier retry priority, reuses complete scan cues where appropriate, and supports saved human phrase choices with undo. Ten additional clips moved from 67/664 to 65/664 reference edits, primarily from spelling; semantic improvement was not demonstrated. The movie regression fix preserves the two earlier edits. Extra coverage costs more processing time. See [ASR_SCAN_REVIEW_V2.md](ASR_SCAN_REVIEW_V2.md).
 
-The latest ten-clip CUDA benchmark compared five models, production review, and evaluation-only reference-guided selection across the existing MCDC core and five newly acquired FLEURS read-speech recordings. Baseline and production both had 31/645 character edits (4.81% CER); constrained oracle selection reached 21/645 (3.26%). Production applied no phrase changes. This identifies missed targeting/selection opportunities, not a measured improvement in the shipping review. See [ASR_FUSION_BENCHMARK.md](ASR_FUSION_BENCHMARK.md).
+The current suite has **191 passing tests**, including a clean source snapshot without developer data or models. Hardware experiments use separately prepared assets; they are not part of the unit-test suite.
+
+An earlier ten-clip CUDA benchmark compared five models, production review, and evaluation-only reference-guided selection across the existing MCDC core and five newly acquired FLEURS read-speech recordings. Baseline and production both had 31/645 character edits (4.81% CER); constrained oracle selection reached 21/645 (3.26%). Production applied no phrase changes. This identifies missed targeting/selection opportunities, not a measured improvement in the shipping review. See [ASR_FUSION_BENCHMARK.md](ASR_FUSION_BENCHMARK.md).
 
 An earlier targeted Japanese review replay used existing CUDA outputs for a 282.73-second recording and made two edits in one of 98 cues without retiming. It is a targeted example, not a held-out accuracy score; a difficult part of the same sentence remained wrong. See [JP_SOURCE_REVIEW.md](JP_SOURCE_REVIEW.md).
 

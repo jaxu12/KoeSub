@@ -16,12 +16,13 @@ PER_FILE_LIMIT = 8*1024**2
 TOTAL_LIMIT = 20*1024**2
 
 
-def fetch(root):
+def fetch(root,offset=0,count=5):
+    if not 0<=offset<100 or not 1<=count<=10 or offset+count>100: raise ValueError('Select 1–10 rows within the first 100')
     root=Path(root).resolve();root.mkdir(parents=True,exist_ok=True)
     index_path=root/'index.json'
     if index_path.exists():
         index=read_json(index_path)
-        if index['revision']!=REVISION or index['selected_rows']!=list(range(5)):
+        if index['revision']!=REVISION or index['selected_rows']!=list(range(offset,offset+count)):
             raise ValueError('Changed reference selection; use a new directory')
         for sample in index['samples']:
             if hashlib.sha256(Path(sample['audio']).read_bytes()).hexdigest()!=sample['audio_sha256']:
@@ -32,8 +33,8 @@ def fetch(root):
     with httpx.Client(timeout=60,follow_redirects=True,headers={'User-Agent':'KoeSub/0.1 reference evaluation'}) as client:
         response=client.get(VIEWER,params={'dataset':'google/fleurs','config':'ja_jp','split':'validation'})
         response.raise_for_status();payload=response.json()
-        rows=payload['rows'][:5]
-        if [r['row_idx'] for r in rows]!=list(range(5)): raise ValueError('Unexpected sample order')
+        rows=payload['rows'][offset:offset+count]
+        if [r['row_idx'] for r in rows]!=list(range(offset,offset+count)): raise ValueError('Unexpected sample order')
         for entry in rows:
             row=entry['row'];index=entry['row_idx'];source=row['audio'][0]['src']
             parsed=urlsplit(source)
@@ -62,8 +63,8 @@ def fetch(root):
                 'download_source':source.split('?')[0],'download_sha256':file_hash.hexdigest(),'download_bytes':size})
             print(samples[-1]['id'],duration/1000,'seconds',size,'download bytes',flush=True)
     result={'dataset':'google/fleurs','revision':REVISION,'license':'CC BY 4.0',
-        'source':'https://huggingface.co/datasets/google/fleurs','selected_rows':list(range(5)),
-        'selection_policy':'First five Japanese validation rows, fixed before ASR; read speech, not a movie or meeting',
+        'source':'https://huggingface.co/datasets/google/fleurs','selected_rows':list(range(offset,offset+count)),
+        'selection_policy':f'Contiguous Japanese validation rows {offset}–{offset+count-1}, fixed before ASR; read speech, not a movie or meeting',
         'limitation':'Separate corpus from MCDC; no claim about model-training contamination or independent speaker identities',
         'downloaded_bytes':downloaded,'samples':samples}
     write_json(index_path,result)
@@ -73,7 +74,8 @@ def fetch(root):
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--root',type=Path,default=Path('D:/models/datasets/koesub-fleurs-ja-v1'))
-    args=parser.parse_args();result=fetch(args.root)
+    parser.add_argument('--offset',type=int,default=0);parser.add_argument('--count',type=int,default=5)
+    args=parser.parse_args();result=fetch(args.root,args.offset,args.count)
     print('Ready:',len(result['samples']),'samples;',result['downloaded_bytes'],'download bytes')
 
 
