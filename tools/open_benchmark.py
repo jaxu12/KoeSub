@@ -9,7 +9,7 @@ from studio import ui
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('data_dir', type=Path)
-    parser.add_argument('--title', default='AI Subtitle Studio • wynik testu')
+    parser.add_argument('--title', default='KoeSub • benchmark results')
     parser.add_argument('--source-review',action='store_true',help='Open the saved JP phrase comparison')
     args = parser.parse_args()
     if not (args.data_dir / 'last_project.json').is_file():

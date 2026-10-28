@@ -211,7 +211,7 @@ class ProcessRunner(QWidget):
 class Window(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("AI Subtitle Studio • lokalny prototyp")
+        self.setWindowTitle("KoeSub • local prototype")
         self.resize(1450, 1000)
         self.settings = Settings.load()
         self.project = Project()
@@ -261,7 +261,7 @@ class Window(QMainWindow):
         layout = QVBoxLayout(root)
         layout.setContentsMargins(22, 16, 22, 14)
         header = QHBoxLayout()
-        title = label("AI Subtitle Studio")
+        title = label("KoeSub")
         title.setObjectName("title")
         header.addWidget(title)
         header.addStretch()
@@ -1871,7 +1871,7 @@ def setup_fonts(app):
 
 def main():
     app = QApplication(sys.argv)
-    app.setApplicationName("AI Subtitle Studio")
+    app.setApplicationName("KoeSub")
     app.setStyle("Fusion")
     app.setStyleSheet(STYLE)
     setup_fonts(app)
@@ -1879,7 +1879,7 @@ def main():
     instance_lock = QLockFile(str(DATA / "studio.lock"))
     instance_lock.setStaleLockTime(0)
     if not instance_lock.tryLock(100):
-        QMessageBox.information(None, "AI Subtitle Studio", "Aplikacja jest już uruchomiona. Przełącz się do jej okna na pasku zadań.")
+        QMessageBox.information(None, "KoeSub", "KoeSub is already running. Switch to its window on the taskbar.")
         return 0
     try:
         window = Window()
@@ -1889,7 +1889,7 @@ def main():
             atomic_text(DATA / "startup-error.log", traceback.format_exc())
         except OSError:
             pass
-        QMessageBox.critical(None, "Nie udało się uruchomić AI Subtitle Studio", str(exc))
+        QMessageBox.critical(None, "KoeSub startup failed", str(exc))
         return 1
     def exception_hook(kind, value, tb):
         import traceback

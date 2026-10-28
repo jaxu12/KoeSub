@@ -1,38 +1,32 @@
-# Testy AI Subtitle Studio — 28.10.2026
+# KoeSub test report
 
-## Wynik
+## Current source-only verification
 
-**94 testy automatyczne zaliczone (6,70 s).** Ponadto zaliczono rzeczywisty pełny pipeline GPU, panel propozycji AI, zapis SQLite, anulowanie lokalnego modelu, waveform, eksport i odtwarzanie filmu. Testy sprzętowe używały istniejących modeli i osobnych projektów. Nie pobierano nowych modeli.
+As of 2026-10-28, **156 tests pass on a clean Git snapshot** without local data, models, or recordings, using the installed development dependencies. The test temporary directory is `.pytest-tmp`, which is ignored by Git. A former `data/test-tmp` setting failed on a fresh checkout with no `data` directory and was corrected.
 
-## Znaleziony i naprawiony błąd
+The suite covers editing/undo, persistence, provenance, format round trips, time/readability checks, strict model-response validation, manual translation protection, source phrase comparison, stage ordering before EN, pause/resume, run locks, timeouts, owned child processes, caches, and Qt behavior. Unit tests do not require model weights or a GPU.
 
-Pierwszy rzeczywisty przebieg ujawnił chwilowy `PermissionError` przy odczycie `manifest.json` na Windows. Obliczenia i eksport zakończyły się, ale interfejs zgłosił błąd odczytu checkpointu. Dotychczas ponawiany był atomowy zapis, nie odczyt.
+## Historical integration checks
 
-Dodano współdzielony odczyt JSON z ograniczonym ponawianiem krótkich blokad Windows (kody 5/32/33), używany przez worker, interfejs i walidację wznowienia. Trwała odmowa dostępu nadal zgłasza błąd po ośmiu próbach; nieprawidłowy JSON zgłasza błąd od razu. Nie zwraca się starego stanu ani nie pomija walidacji. Dodano osiem przypadków regresji; cała pula wzrosła z 86 do 94. Powtórzony pełny przebieg zakończył się prawidłowo.
+An earlier phase had 94 passing tests in 6.70 seconds. Its real 20-second Japanese pipeline ran Whisper Large V3 and Qwen ASR on Vulkan, selected JP, generated two local Qwen3-4B EN profiles, selected EN, reviewed/repaired/verified, and exported. All 12 stages completed, preserving ten tracks and five final cues, with approximately 127 seconds summed stage time. Four cues still required review.
 
-## Sprawdzone scenariusze
+That experiment exposed a transient Windows `PermissionError` reading a checkpoint after computation had completed. Shared bounded JSON-read retries were added for codes 5/32/33. Eight regression cases grew the suite from 86 to 94. Invalid JSON still fails immediately and permanent denial still fails after bounded retries. Later errno-only access-denial handling is described in [EASY_JAPANESE_TEST.md](EASY_JAPANESE_TEST.md).
 
-| Test | Wynik i zakres |
+Additional checks included:
+
+| Utility | Scope |
 |---|---|
-| `python -m pytest -q` | 94 zaliczone: edycja/cofanie, zapis, pochodzenie, formaty, czasy/czytelność, walidacja odpowiedzi, ochrona ręcznych tłumaczeń, pauza/wznowienie, blokada równoczesnego przebiegu, timeouty, procesy potomne, cache i GUI. |
-| `python -m tools.verify_pipeline` | 20 s japońskiego audio; Whisper Large V3 i Qwen ASR na Vulkan; wybór JP; dwa profile EN lokalnego Qwen3-4B; wybór EN; pełne AI, próba poprawy i ponowna ocena; eksport. Wszystkie 12 etapów ukończone, 10 ścieżek zachowane, 5 końcowych napisów. Suma czasów etapów około 127 s, razem z ładowaniem modeli. |
-| `python -m tools.verify_pipeline --audit …` | Ponownie odczytano pliki: sumy kontrolne wszystkich checkpointów, kompletność EN, poprawne granice czasu, zgodność każdego tekstu/czasu JP i EN po imporcie wyeksportowanych SRT oraz spójność raportu. Zaliczony także dla pierwszego przebiegu, którego UI zgłosił błąd. |
-| `python -m tools.verify_qol` | 1000 szczytów waveformu dla 20 s audio; trzy rzeczywiste strukturalne oceny lokalnego modelu; istniejące EN pozostały niezmienione; ponowny import ASS i eksport TXT prawidłowe. Próbki JP/EN w tym teście są syntetyczne i nie są oceną zgodności z nagraniem. |
-| `python -m tools.verify_gui_embedded` | GUI → lokalny GGUF → SQLite; następnie uruchomienie i anulowanie rzeczywistego zadania, zakończenie jego drzewa procesów i zapis statusu `cancelled`. |
-| `python -m tools.smoke_ui` | Odtwarzanie istniejącego filmu testowego H.264/AAC, odczyt ścieżki audio, aktualizacja pozycji, podgląd napisów i zapis osobnego projektu. |
-| `python -m tools.preview_qol` | Renderowanie edytora/panelu AI i okien podglądu poprawek; sprawdzenie przewijania przy 960×700. Obrazy obejrzano. |
-| `python -m compileall -q studio tools` | Brak błędów kompilacji źródeł. |
+| `tools.verify_pipeline --audit MANIFEST` | Completed artifact digests, JP/EN text and time round trips, time bounds, and report consistency; no model calls |
+| `tools.verify_qol` | FFmpeg waveform, structured local-model proposals, existing EN protection, ASS import, and TXT export |
+| `tools.verify_gui_embedded` | GUI → local model → SQLite, followed by real cancellation and child-process cleanup |
+| `tools.smoke_ui` | Existing H.264/AAC video playback, audio-track probing, playhead, subtitles, and isolated project save |
+| `tools.preview_qol` | Rendered editor/review dialogs and 960×700 layout; images inspected |
+| `python -m compileall -q studio tools` | Source compilation |
 
-## Jakość i ostrzeżenia
+Local artifacts for that phase are in `D:\models\.cache\verification-pipeline-ui`, `verification-qol`, and `verification-gui-embedded`; successful run ID `ff5df83401a44940b34c7e17cdabf8d6`. They are not included in the repository.
 
-Końcowy pipeline ma status **`needs_review`**, ponieważ cztery z pięciu napisów wymagają kontroli. Raport zachowuje ostrzeżenia o długości wierszy, zbyt szybkim EN, różnicach między ASR i przycięciu ostatniego napisu do końca fragmentu. Poprawny eksport nie oznacza, że wszystkie napisy nadają się już do publikacji. Test nie mierzy WER/CER ani trafności przekładu względem ręcznie przygotowanej referencji i nie obejmuje długiego filmu z muzyką.
+## Interpretation
 
-## Artefakty
+A successful export verifies pipeline behavior, not subtitle accuracy. Warning categories overlap and are not counts of confirmed errors. Historical short tests did not measure whole-film WER/CER or translation quality against an audited reference. Later full-recording experiments are documented in [BENCHMARK_REPORT.md](BENCHMARK_REPORT.md), [EASY_JAPANESE_TEST.md](EASY_JAPANESE_TEST.md), and [JP_SOURCE_REVIEW.md](JP_SOURCE_REVIEW.md).
 
-- Udany przebieg: `D:\models\.cache\pipeline\ff5df83401a44940b34c7e17cdabf8d6\manifest.json`.
-- SRT i raport: `D:\models\.cache\verification-pipeline-ui\projects\d4dfffc97eb44625982b0d313597da13\exports\ff5df83401a44940b34c7e17cdabf8d6`.
-- Podgląd ukończonego pipeline: `D:\models\.cache\verification-pipeline-ui\pipeline-preview.png`.
-- Waveform, propozycje i formaty: `D:\models\.cache\verification-qol`.
-- Test tłumaczenia/anulowania: `D:\models\.cache\verification-gui-embedded`.
-
-Testy GPU należy wykonywać pojedynczo, przy bezczynnym głównym oknie aplikacji. Polecenie `--audit` sprawdza istniejący przebieg bez ponownego uruchamiania modeli.
+Run GPU experiments sequentially with prepared local assets. Audit existing artifacts when inference does not need to be repeated.

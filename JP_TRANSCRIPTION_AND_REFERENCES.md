@@ -1,98 +1,73 @@
-# Transkrypcja JP, wycinki i baza referencyjna — 28.10.2026
+# Japanese transcription, retries, and references — 2026-10-28
 
-Dodano tryb **„Tylko oryginalne napisy JP”** oraz preset **„Transkrypcja JP • Large V3 + wycinki”**. Nowe projekty zaczynają od tego trybu. Zapisane starsze konfiguracje pozostają dostępne. W tym trybie nie uruchamia się tłumaczenie, review EN, LM Studio ani wbudowany LLM. Eksport obejmuje wyłącznie JP i raport.
+New projects default to Japanese-only transcription. Translation, English review, LM Studio, and embedded LLM inference are skipped. Exports contain JP and a report. Existing full-pipeline configurations remain available.
 
-**Aktualizacja:** nowe przebiegi mają lokalne review fraz JP przed tłumaczeniem. Zastępuje ono historyczną decyzję o zamianie całego okna opisaną niżej. Na zapisanych wynikach tego filmu zastosowano 2 zmiany w 1 napisie bez zmiany czasów; 156 testów poprawnych. Szczegóły: [JP_SOURCE_REVIEW.md](JP_SOURCE_REVIEW.md).
+**Current update:** new runs include local JP phrase review before translation. The strict whole-window decision described in the historical test below is superseded for new jobs. Replaying its cached results produced two edits in one cue without retiming; see [JP_SOURCE_REVIEW.md](JP_SOURCE_REVIEW.md).
 
-## Jak działa nowy przebieg
+## Targeted audio retries
 
-1. **Large V3 + VAD jest bazą.** Kotoba i inne modele nie zastępują go przez tekstowe głosowanie.
-2. Podejrzane miejsca są wskazywane przez niską pewność tokenów, powtórzenia i samą interpunkcję. Pewność jest wskaźnikiem ryzyka, nie dowodem błędu. Obecne progi to średnia poniżej 0,78 lub co najmniej 20% tokenów o pewności poniżej 0,4.
-3. Program wycina audio z domyślnie 3 sekundami kontekstu przed i po. Granice obejmują całe sąsiednie napisy, wycinki nie nakładają się, pojedyncze okno ma maksymalnie 30 s. Domyślny limit to 12 wycinków.
-4. Wycinek trafia ponownie do Large V3 i do wybranego modelu pomocniczego. Domyślnie jest nim Kotoba; dostępne są również testowe Qwen JA Anime/Galgame, Anime-Whisper i ReazonSpeech. Modele pracują kolejno, z jawnym wyborem CUDA i plikami na D:.
-5. Automatyczna zamiana wymaga zgodności obu ponowień po normalizacji, poprawnych czasów, wystarczającej pewności ponowienia bazy oraz zachowania tekstu na granicach kontekstu. Sama Kotoba/Anime/Reazon/Qwen nie może przegłosować bazy. Nawet zastosowana zamiana pozostaje oznaczona do odsłuchu.
-6. Rozbieżności zachowują bazę. Wszystkie propozycje, czasy prób, powody odrzucenia i logi są zapisywane. Checkpointy pozwalają wznowić bez powtarzania gotowych prób; zmienione źródła, granice i decyzje są wykrywane.
+1. Large V3 + VAD supplies the baseline; auxiliary models cannot replace it by unsupported text voting.
+2. Low token confidence, repetition, and punctuation-only cues identify suspicious intervals. Current confidence thresholds are a mean below 0.78 or at least 20% of tokens below 0.4. These are risk signals, not proof of error.
+3. Windows include three seconds of context before/after by default, expand to whole neighboring cues, and do not overlap. The default maximum window is 30 seconds, with up to 12 windows per run.
+4. Each window is decoded again by Large V3 and an auxiliary model, normally Kotoba. Experimental Qwen JA Anime/Galgame, Anime-Whisper, and ReazonSpeech profiles are available. Models run sequentially with explicit device selection.
+5. Raw hypotheses, durations, rejections, and logs are retained. Changed source text, window boundaries, attempts, or completed decisions invalidate resume.
+6. Manual/reviewed text is protected. JP layout wraps lines without retiming baseline cues.
 
-Przycisk **„Wycinki ASR • porównaj”** pokazuje tekst bazy, ponowienie Large V3, propozycję modelu pomocniczego i decyzję. Dwuklik odtwarza dany zakres filmu. Nie są przesuwane czasy bazy ani automatycznie zastępowany tekst ręcznie sprawdzony. Opcja układu JP łamie wiersze bez zmiany słów i czasów.
+The old policy required two complete retry windows to agree with preserved boundary context. The current phrase policy compares smaller corroborated units while preserving unresolved baseline text.
 
-## Test na całym filmie
+## Historical full-recording retry test
 
-Easy Japanese 1, 282,73 s, CUDA:
+Easy Japanese 1: 282.73 seconds, CUDA.
 
-| Etap | Czas |
+| Stage | Duration |
 |---|---:|
-| Audio — istniejący cache | 0,00 s |
-| Large V3 + VAD | 52,56 s |
-| 9 podejrzanych wycinków, po 2 ponowienia | 252,50 s |
-| Układ JP i eksport | 0,02 + 0,03 s |
-| **Całość** | **305,984 s — 5 min 6 s** |
+| Cached audio | 0.00 s |
+| Large V3 + VAD | 52.56 s |
+| Nine windows, two retries each | 252.50 s |
+| JP layout / export | 0.02 / 0.03 s |
+| Total wall time | 305.984 s |
 
-Wynik: **98 napisów, 3 ścieżki, 35 fragmentów z ostrzeżeniami**, brak tłumaczeń. Wybrano także wycinek z imieniem prowadzącej i wypowiedź o świeżych rybach. W tej ostatniej ponowienia nadal zawierały błędy. Żaden z 9 wycinków nie spełnił warunków bezpiecznej zamiany, więc **zastosowano 0 zmian tekstu**. To test działającego wykrywania i ponawiania, nie wykazana poprawa trafności.
+The original result had 98 cues, three tracks, and 35 warning-bearing cues. **Zero whole-window replacements** passed the old conditions. This verified detection and retries, not an accuracy improvement. Repeated ASR loading accounts for part of retry cost; ASR models are not yet kept loaded across windows.
 
-Koszt ponowień obejmuje wielokrotne ładowanie ASR. Limit wycinków pozwala go ograniczyć. Nie wdrożono jeszcze utrzymywania modeli ASR w pamięci między wycinkami.
+Local run ID: `841464cecf4343fa9f1217ed29d341fc`; benchmark root: `D:\models\.cache\benchmark-jp-retry`. Artifacts are not included in Git. GUI, SQLite, stage digests, and exported JP SRT were audited.
 
-Pełny test interfejsu, SQLite, digestów etapów i ponownego odczytu JP SRT przeszedł poprawnie. [Czasy](D:/models/.cache/benchmark-jp-retry/timings.json), [manifest](D:/models/.cache/pipeline/841464cecf4343fa9f1217ed29d341fc/manifest.json), [raport z propozycjami](D:/models/.cache/benchmark-jp-retry/projects/aa0d7508eb3f44788313c3afd7cf662e/exports/841464cecf4343fa9f1217ed29d341fc/report.json).
+## Reference bank
 
-## Jak korzystamy z referencji
+Thirty disjoint clips were prepared from the existing MCDC recording and Japanese SRT: **599.802 seconds of FLAC, approximately 18.59 MiB**. Audio is shared by ASR and review examples.
 
-Przygotowano **30 niepokrywających się wycinków**, łącznie 599,802 s audio FLAC, około 18,59 MiB. Audio jest zapisane raz i współdzielone przez przykłady ASR/review. Pochodzi z istniejącego nagrania MCDC i istniejącego japońskiego SRT.
+- 19 clips are marked `development`, 11 `control`.
+- The fixed first-five-clip comparison core contains 22 reference cues and 408 normalized characters.
+- All clips come from **one recording**. They are time-disjoint, not source- or speaker-independent.
+- Community captions were not manually audio-verified. Labels retain `human_audio_verified: false` and `training_ready: false`.
 
-- 19 wycinków ma etykietę `development`, 11 `control`.
-- Pierwsze 5 tworzy stały rdzeń wstępnego porównania modeli: 22 napisy i 408 znaków po normalizacji.
-- Wszystkie wycinki pochodzą z jednego nagrania. Podział jest rozłączny czasowo, ale **nie jest niezależny pod względem rozmówców ani źródła**. Do mocnej oceny generalizacji potrzebne będą kolejne nagrania.
-- Tekst pochodzi ze społecznościowych napisów; nie został ręcznie sprawdzony przez odsłuch. Dane mają jawne `human_audio_verified: false` i `training_ready: false`.
+ASR receives audio only. Reference text is used after decoding. CER uses Unicode normalization and removes punctuation/spacing, without equating kanji and kana. It measures differences from community captions, not certain audio error or translation accuracy. Repeated tuning on control results consumes the independence of that split; broader evaluation needs more held-out recordings.
 
-**ASR dostaje tylko audio.** Dopiero po rozpoznaniu porównujemy jego tekst z referencją. CER mierzy różnicę znaków względem SRT, po usunięciu interpunkcji i odstępów oraz normalizacji Unicode. Nie zrównuje automatycznie kanji z hiraganą, więc część różnic może dotyczyć pisowni. Nie jest to bezbłędny pomiar zgodności z audio ani ocena tłumaczenia.
+## Review and training preparation
 
-Podział roboczy/kontrolny pozwala zmieniać ustawienia na części roboczej, a potem sprawdzać wynik na kontrolnej. Wielokrotne wybieranie ustawień na podstawie kontroli zużywa jej niezależność — wtedy potrzeba nowego, odłożonego zbioru.
+The bank contains 30 audio/JP ASR pairs, 30 unchanged review cases, 30 explicitly synthetic repetition cases, and five real Large V3 outputs. Real ASR/SRT differences require label audit rather than automatic assignment as model errors.
 
-## Dane pod dostosowanie review i Whispera
+There are **65 input-only review records** and **65 separate labels**. Labels must not be passed to the evaluated model. Clean examples also measure unnecessary edits. A text LLM does not hear the audio.
 
-Ta sama baza ma dwa zastosowania:
+**No model weights have been fine-tuned.** Before training, the labels need review and the dataset needs broader coverage. Inference GGML/GGUF files are not a ready-made training environment.
 
-- **Whisper:** audio → poprawny JP. Plik `asr_examples.jsonl` zawiera 30 par, lecz etykiety wymagają kontroli przed zaufanym treningiem.
-- **Review:** hipoteza ASR → ocena i ewentualna propozycja JP. Przygotowano 30 przykładów bez zmian, 30 ze sztucznie dodanym powtórzeniem i 5 rzeczywistych wyników Large V3. Przykłady sztuczne są wyraźnie oznaczone; różnice rzeczywistego ASR wobec SRT wymagają audytu, zamiast automatycznej etykiety „błąd”.
+Local bank root: `D:\models\datasets\subtitle-studio-references-v1`, including `index.json`, `asr_examples.jsonl`, `review_inputs.jsonl`, `review_labels.jsonl`, and `review_real_asr_examples.jsonl`. These files are excluded from the repository.
 
-Łącznie zapisano **65 wejść review** bez poprawnych odpowiedzi oraz osobne **65 etykiet referencyjnych**. Pliku z etykietami nie wolno podawać modelowi podczas testu. Przykłady poprawne służą także pomiarowi niepotrzebnych zmian. Tekstowy LLM nie słyszy audio; propozycja językowa nie dowodzi, co powiedziano.
+## Five-clip CUDA model comparison
 
-**Nie przeprowadzono douczania wag.** Przygotowano bazę, przykłady i pomiar obecnych modeli. Przed treningiem potrzebna jest kontrola etykiet i szerszy zbiór. Pliki GGML/GGUF służą tu inferencji; trening wymaga osobnego przygotowania źródłowych wag i środowiska.
+No reference text was supplied to ASR as a prompt.
 
-Pliki:
-
-- [Indeks 30 wycinków i pochodzenie](D:/models/datasets/subtitle-studio-references-v1/index.json).
-- [Pary audio–JP dla ASR](D:/models/datasets/subtitle-studio-references-v1/asr_examples.jsonl).
-- [Wejścia review bez odpowiedzi](D:/models/datasets/subtitle-studio-references-v1/review_inputs.jsonl).
-- [Osobne odpowiedzi i oznaczenia jakości etykiet](D:/models/datasets/subtitle-studio-references-v1/review_labels.jsonl).
-- [Rzeczywiste pary wynik ASR–referencja](D:/models/datasets/subtitle-studio-references-v1/review_real_asr_examples.jsonl).
-
-## Nowe modele: co faktycznie sprawdzono
-
-Porównanie tych samych pięciu wycinków, CUDA, bez podawania referencji jako promptu:
-
-| Model w naszym runtime | CER całego rdzenia | Poprawne czasy napisów |
+| Model in the tested runtime | Core CER | Valid timing |
 |---|---:|---:|
-| Large V3 | **6,62%** | **5/5** |
-| Kotoba + aligner | **10,78%** | **5/5** |
-| ReazonSpeech NeMo v2 FP16 GGUF | **27,94%** dla tekstu | **1/5** |
-| Anime-Whisper GGML FP16 | Brak pełnego porównywalnego wyniku | **3/5**; jedna próba miała uszkodzone UTF-8 |
+| Large V3 | 6.62% | 5/5 |
+| Kotoba + aligner | 10.78% | 5/5 |
+| ReazonSpeech NeMo v2 FP16 GGUF | 27.94%, text only | 1/5 |
+| Anime-Whisper FP16 GGML | No comparable complete score | 3/5; one invalid UTF-8 result |
 
-Pomiar tekstu rozdzielono od poprawności czasów. ReazonSpeech miał czytelny tekst we wszystkich próbach, lecz w czterech zerowe czasy; pojedynczy dodatkowy test z alignerem i krótszymi oknami nie usunął problemu. Dla Anime nie wyliczano porównywalnego pełnego CER po odrzuceniu uszkodzonego tekstu. Wyniki dotyczą małej próbki oraz konkretnych konwersji/runtime’u, nie całej jakości oryginalnych modeli Python.
+Text scoring is separate from timing validity. Reazon produced readable text in all five trials but zero-duration cues in four. An additional shorter-window/aligner test did not resolve the problem. Anime's corrupt text prevents a complete comparable CER. These are small-sample results for particular conversions and runtimes, not a universal ranking of the original Python models.
 
-ReazonSpeech jest pobrany jako jeden zgodny z CrispASR plik [FP16 GGUF](D:/models/asr/reazonspeech-nemo-v2-f16.gguf), 1 240 435 584 bajty. [Źródło konwersji](https://huggingface.co/cstr/reazonspeech-nemo-v2-GGUF). Nie instalowano dużego środowiska NeMo/PyTorch. Pozostaje opcją testową.
+- [Reazon conversion](https://huggingface.co/cstr/reazonspeech-nemo-v2-GGUF): one 1,240,435,584-byte FP16 GGUF; no NeMo/PyTorch environment was installed. Experimental.
+- [Anime GGML conversion](https://huggingface.co/Aratako/anime-whisper-ggml): its author documents text corruption, also observed here. It does not replace Kotoba. The [original model](https://huggingface.co/litagin/anime-whisper) is a separate artifact; no initial prompt was used.
+- [Qwen3-ASR JA Anime/Galgame conversion](https://huggingface.co/cstr/qwen3-asr-1.7b-ja-anime-GGUF): the existing 2,506,725,376-byte Q8 file was reused. Verified SHA256: `f173ceddb15b59177575a101491862bd362cd85f2e7a6bac811fbc53411596a1`.
+- [Kana-Whisper](https://huggingface.co/sbintuitions/kana-whisper): outputs katakana pronunciation rather than ordinary mixed-script subtitles. Investigated but not downloaded.
 
-Anime-Whisper jest pobrany jako jeden [plik GGML FP16](D:/models/whisper/ggml-anime-whisper.bin). Konwersja Aratako ma [opisany przez autora problem z tekstem](https://huggingface.co/Aratako/anime-whisper-ggml), który ujawnił się także w próbach. Nie zastępuje domyślnej Kotoby. Oryginalny [litagin/anime-whisper](https://huggingface.co/litagin/anime-whisper) opiera się na Kotobie i jest dostrojony do anime/gier; nie należy utożsamiać awarii tej konwersji z oceną oryginalnego modelu. Nie używano initial prompt, zgodnie z zaleceniem autora.
-
-Qwen3-ASR 1.7B JA Anime/Galgame **był już pobrany**: [Q8_0 GGUF](D:/models/asr/qwen3-asr-1.7b-ja-anime-q8_0.gguf), 2 506 725 376 bajtów. Potwierdzono SHA256 `f173ceddb15b59177575a101491862bd362cd85f2e7a6bac811fbc53411596a1` i [pochodzenie Anime/Galgame](https://huggingface.co/cstr/qwen3-asr-1.7b-ja-anime-GGUF). Nie pobierano duplikatu. Jego wcześniejsze awarie alignera pozostają opisane w raportach.
-
-[Kana-Whisper](https://huggingface.co/sbintuitions/kana-whisper) zwraca katakanową transkrypcję wymowy. Sprawdzono przeznaczenie: może służyć dodatkowej kontroli fonetycznej i Kana-CER, lecz nie daje zwykłych napisów z kanji. Nie został pobrany ani dodany jako zamiennik tekstowego JP.
-
-[Surowe próby modeli](D:/models/datasets/subtitle-studio-references-v1/model-comparison/results.json) · [Porównanie tekstu i ważności czasów](D:/models/datasets/subtitle-studio-references-v1/model-comparison/summary.json).
-
-## Weryfikacja i wynik do otwarcia
-
-**138 testów automatycznych poprawnych**, m.in. tryb bez modeli tłumacza, brak wywołań LLM, JP-only eksport, ochrona bazy i ręcznych zmian, offsety wycinków, brak samodzielnego głosu modelu pomocniczego, utrata kontekstu, cache i wykrywanie zmienionych checkpointów, odrzucanie UTF-8 oraz porównanie/odsłuch w Qt.
-
-- [Projekt JP z wycinkami](D:/models/.cache/benchmark-jp-retry/projects/aa0d7508eb3f44788313c3afd7cf662e/project.sqlite).
-- [Japońskie SRT](D:/models/.cache/benchmark-jp-retry/projects/aa0d7508eb3f44788313c3afd7cf662e/exports/841464cecf4343fa9f1217ed29d341fc/Japanese.srt).
-
-Wagi, nagrania i cache pozostają na D:. Nie zmieniono głównego projektu użytkownika ani nie uruchamiano testów Vulkana.
+Historical tests at this stage numbered 138. The later phrase-review suite reached 156. Model weights, recordings, and caches stayed on the configured data drive, and the main user project was preserved.

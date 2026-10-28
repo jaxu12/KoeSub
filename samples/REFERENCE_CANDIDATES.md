@@ -1,25 +1,15 @@
-# Materiały z istniejącymi napisami — 28.10.2026
+# Recordings with existing subtitles
 
-## Uliczne rozmowy z napisami w obrazie
+These notes identify external reference candidates, not bundled media. See each source for attribution and reuse terms. Community captions and OCR are not automatically error-free ground truth.
 
-**Easy Japanese 1 — Typical Japanese**, Easy Languages, około 4:43.
+## Street interviews with burned-in captions
 
-- Film: https://www.youtube.com/watch?v=qzzweIQoIOU
-- Oryginalne japońskie rozmowy z różnymi osobami w Sendai; pytania o to, co jest typowo japońskie.
-- Opis autora potwierdza napisy w języku oryginalnym i angielskim oraz podaje: „Transcription and Subtitle Producation: Hideo Adachi”.
-- Wizualnie potwierdzono napisy w obrazie w automatycznej klatce YouTube: `data/easy-japanese-reference-frame.jpg` (podgląd ma tylko 120×90, do dokładnego przepisywania/OCR potrzebne będzie wideo w wyższej rozdzielczości).
-- To nowy kandydat do porównania JP ASR i EN. Nie pobrano całego filmu i nie potwierdzono osobnego SRT. Nie należy przedstawiać napisów OCR ani automatycznych YouTube jako bezbłędnej referencji.
-- Dostępność filmu i tytuł potwierdzono przez oficjalny YouTube oEmbed. Nie pobierano modeli ani nie instalowano nowych narzędzi.
+[Easy Japanese 1 — Typical Japanese](https://www.youtube.com/watch?v=qzzweIQoIOU), Easy Languages, approximately 4:43, contains interviews with several people in Sendai and JP/romaji/EN captions. It was first identified from a small preview and later acquired at usable resolution for the experiment in [EASY_JAPANESE_TEST.md](../EASY_JAPANESE_TEST.md). No complete independent SRT was obtained. The experiment used twelve initial caption frames and one targeted additional frame, without whole-film CER.
 
-## Gotowe lokalne wideo i SRT JP/EN
+## Meeting video with JP/EN SRT
 
-**MCDC Onboarding “Ask me Anything” — Japanese language**, 23:10, rzeczywiste nagranie spotkania.
+[MCDC Onboarding “Ask me Anything” — Japanese language](https://commons.wikimedia.org/wiki/File:MCDC_Onboarding_%22Ask_me_Anything%22_session_-_Japanese_language.webm), 23:10, is a real meeting recording. Local test assets are under `D:\models\test-media\mcdc-japanese`: `MCDC-Japanese-23m-240p.webm`, `reference.ja.srt`, `reference.en.srt`, and source revision/attribution metadata in `source.json`.
 
-- Źródło: https://commons.wikimedia.org/wiki/File:MCDC_Onboarding_%22Ask_me_Anything%22_session_-_Japanese_language.webm
-- Film: `D:\models\test-media\mcdc-japanese\MCDC-Japanese-23m-240p.webm` (około 21 MiB).
-- JP SRT: `D:\models\test-media\mcdc-japanese\reference.ja.srt`.
-- EN SRT: `D:\models\test-media\mcdc-japanese\reference.en.srt`.
-- Oryginały, rewizje i atrybucja: `D:\models\test-media\mcdc-japanese\source.json`.
-- Można od razu porównywać tekst i czasy; są to napisy społecznościowe, nie niezależnie zatwierdzony wzorzec. Wcześniejsze porównanie fragmentu opisano w `BENCHMARK_REPORT.md`.
+The published captions permit text/time comparison, but they were not independently audio-audited. See [BENCHMARK_REPORT.md](../BENCHMARK_REPORT.md) and [JP_TRANSCRIPTION_AND_REFERENCES.md](../JP_TRANSCRIPTION_AND_REFERENCES.md) for limited-interval and five-clip comparisons.
 
-Sprawdzony wcześniej klip Sisters of the Gion z `samples/media` nie ma napisów w obejrzanej klatce i nie ma potwierdzonego sparowanego SRT; nie należy oznaczać go jako gotowego materiału referencyjnego.
+The earlier Sisters of the Gion clip has no confirmed matching SRT and showed no captions in the inspected frame. It is a difficult-audio sample, not a ready reference dataset.

@@ -1,125 +1,83 @@
-# Easy Japanese 1 — pełny test na rzeczywistym filmie
+# Easy Japanese 1 — historical full-recording test
 
-Test z 28.10.2026. Cały film **4:42,73**, bez skracania. Ukończono transkrypcję, kontekst całego JP, dwa tłumaczenia EN, wybór EN, kontrolę spójności, pełne review, poprawki, ponowną ocenę, formatowanie i eksport. Wynik: **98 napisów, 34 zmiany EN, status `needs_review`, 74 napisy z ostrzeżeniami**. Nie jest to wynik gotowy do publikacji bez kontroli.
+Recorded on 2026-10-28: the complete **282.73-second** street-interview video was processed through ASR, JP context, two EN profiles, EN selection, continuity review, semantic review, repair, verification, layout, and export. The result had **98 cues, 34 changed EN cues, 74 warning-bearing cues, and status `needs_review`**. It was not publication-ready.
 
-Pierwotny wariant dwóch różnych ASR nie przeszedł testu. Qwen miał błędy alignera; Whisper bez VAD również wygenerował nieprawidłowe czasy. Ukończony przebieg korzysta z **jednego Whispera z VAD**, a nie z dwóch niezależnych transkrypcji. Wadliwe próby i logi zachowano osobno.
+## Recording and reference
 
-## Materiał i niezależna referencja
+[Easy Japanese 1 — Typical Japanese](https://www.youtube.com/watch?v=qzzweIQoIOU), Easy Languages, contains interviews in Sendai, street noise, musical transitions, and burned-in JP/romaji/EN captions. YouTube rejected anonymous download with HTTP 429/login requirements. A public [Bilibili mirror of the same episode](https://www.bilibili.com/video/BV1yt411N7mb/?p=1) was used without an account or cookies. Title, duration, and visible content were checked; byte identity with the YouTube file was not claimed.
 
-[Easy Japanese 1 — Typical Japanese, Easy Languages](https://www.youtube.com/watch?v=qzzweIQoIOU). Rozmowy uliczne w Sendai; różni rozmówcy, tło uliczne, muzyczne przejścia. Film ma wypalone napisy japońskie, romaji i angielskie.
+Local media: 1280×720 H.264/AAC, 55.03 MiB, SHA256 `796f132cc85ac3652157623d4387689b8d60ccb7bb97b426f6880eea0e044f1a`. Source metadata is retained locally under `D:\models\test-media\easy-japanese-1`. Media are not distributed with KoeSub.
 
-YouTube odrzucił anonimowe pobranie HTTP 429 / komunikatem logowania. Pobrano publiczną kopię [tego samego odcinka na Bilibili, część 1](https://www.bilibili.com/video/BV1yt411N7mb/?p=1). Tytuł, długość i zawartość sprawdzono; nie stwierdzano identyczności bajtowej z plikiem YouTube. Nie używano konta ani cookies.
+Twelve initial visible-caption samples and one targeted 46.5-second sample were read from original frames. The extra sample was selected after a suspicious ASR result was noticed. No complete independent SRT was obtained. Caption fragments and differing speech/caption boundaries prevent a whole-film WER/CER claim. Reference text was not supplied to the models.
 
-- Plik: [Easy_Japanese_1_Typical_Japanese.mp4](D:/models/test-media/easy-japanese-1/Easy_Japanese_1_Typical_Japanese.mp4), 1280×720, H.264/AAC, 55,03 MiB.
-- SHA256: `796f132cc85ac3652157623d4387689b8d60ccb7bb97b426f6880eea0e044f1a`.
-- [Pochodzenie i parametry pliku](D:/models/test-media/easy-japanese-1/source.json).
-- Porównanie: 12 początkowych próbek napisów z obrazu oraz dodatkowa, celowo wybrana próbka 46,5 s po zauważeniu podejrzanego ASR. Referencję odczytano z oryginalnych klatek, nie wygenerowano jej modelem aplikacji.
-- [Szczegółowe porównanie JP/EN i ścieżki do klatek](D:/models/.cache/benchmark-easy-japanese-1-final/reference-comparison.json).
+## Configuration and timings
 
-Nie pozyskano pełnego niezależnego SRT. Próbki zawierają fragmenty zdań, a granice napisów autora mogą różnić się od granic wypowiedzi ASR. **Nie obliczano WER/CER ani procentowej poprawności całego filmu.** Tekstu referencyjnego nie podawano modelom podczas testu.
+The intended two-ASR setup failed: Qwen had alignment errors, and Whisper without VAD produced invalid timing. The completed run used **one Whisper Large V3 + VAD**, not two independent transcriptions. Qwen3-4B Instruct Q4_K_M ran through CUDA llama-completion with context 4096 and translation batches of six. Natural/faithful EN profiles shared the same weights.
 
-## Konfiguracja i czasy
-
-RTX 5060 8 GB. ASR: Whisper Large V3 FP16 GGML + Silero VAD przez CrispASR CUDA. Tłumaczenia i review: wbudowany Qwen3-4B-Instruct-2507 Q4_K_M przez llama-completion CUDA, kontekst 4096, partie tłumaczenia po 6. Oba warianty EN używają tych samych wag i różnych instrukcji: naturalnej i wiernej. Nie są to dwa niezależne modele.
-
-Wszystkie modele, cache oraz materiał testowy pozostały na D:. Nie pobierano nowych wag modeli. Dodano film oraz małe narzędzie yt-dlp, którego ostatecznie nie udało się użyć do pobrania tego odcinka; film pobrano przez publiczne API kopii.
-
-| Etap ukończonego przebiegu | Czas |
+| Completed stage | Duration |
 |---|---:|
-| Audio — wykorzystano istniejący WAV | 0,00 s |
-| Whisper Large V3 + VAD | 48,45 s |
-| Kontekst całego filmu | 20,73 s |
-| Tłumaczenie naturalne | 82,05 s |
-| Tłumaczenie wierne | 81,98 s |
-| Wybór EN | 149,73 s |
-| Spójność całego filmu | 100,17 s |
-| Dokładne review wszystkich 98 napisów | 297,80 s |
-| Próby poprawek i porównania kandydatów | 432,95 s |
-| Ponowna ocena wszystkich 98 napisów | 307,41 s |
-| Formatowanie | <0,01 s |
-| Eksport | 0,05 s |
-| **Cały ukończony przebieg** | **1521,725 s = 25 min 21,725 s** |
+| Cached audio | 0.00 s |
+| Large V3 + VAD | 48.45 s |
+| Whole-transcript context | 20.73 s |
+| Natural / faithful EN | 82.05 / 81.98 s |
+| EN selection | 149.73 s |
+| Continuity | 100.17 s |
+| Review all 98 cues | 297.80 s |
+| Repair generation / comparison | 432.95 s |
+| Review verification | 307.41 s |
+| Layout / export | <0.01 / 0.05 s |
+| **Total** | **1521.725 s** |
 
-Czas całego przebiegu pochodzi z jego oryginalnych znaczników utworzenia i ukończenia. Nie obejmuje pobierania, wcześniejszych nieudanych prób ani późniejszego audytu/interfejsu. Pierwsza ekstrakcja audio w pierwotnym przebiegu trwała 0,28 s; końcowy przebieg wykorzystał ten cache.
+Total time comes from original creation/completion timestamps and excludes downloads, preceding failed attempts, and later audit/UI replay. The first audio extraction took 0.28 seconds and was reused. Decision/review logs recorded 412 LLM calls and 637.063 seconds of loading, roughly 42% of the full run, excluding separately cached translation calls. Persistent sessions were implemented later.
 
-Pomiar pokazał koszt częstego ładowania modelu: w 412 wywołaniach decyzji/review logi wykazały łącznie **637,063 s ładowania**, medianę 1,488 s. To około 42% czasu całego przebiegu, jeszcze bez wywołań tłumaczenia przechowywanych we wspólnym cache. Utrzymanie modelu LLM w pamięci między kolejnymi decyzjami jest konkretnym kierunkiem optymalizacji; nie zostało wdrożone w tym teście.
+## CUDA and rejected ASR attempts
 
-[Pełne czasy i metadane audytu](D:/models/.cache/benchmark-easy-japanese-1-final/timings.json) · [Zestawienie jakości, GPU i kosztu ładowania](D:/models/.cache/benchmark-easy-japanese-1-final/summary.json).
+Whisper logs and LLM `CUDA0` arguments confirmed CUDA. Whole-GPU telemetry peaked at 5380 MiB during successful ASR and 4865 MiB during LLM work. Samples include desktop/other GPU use. The CUDA build/runtime minor-version warning remained in logs.
 
-## CUDA i nieudane warianty ASR
-
-Logi Whispera potwierdzają CUDA; proces LLM uruchamiał się z `--device CUDA0 --n-gpu-layers 99`. W trakcie pracy potwierdzono pojedynczy proces llama-completion, obciążenie GPU 86% i zajęte 4435 MiB. Telemetria co 2 sekundy nie zgłosiła błędów.
-
-Największe zaobserwowane użycie pamięci w ukończonym przebiegu: **5380 MiB** podczas ASR. Dla etapów LLM: do **4865 MiB**. Są to pomiary całego GPU, razem z pulpitem i innymi procesami, a nie osobne liczniki pamięci modelu. Log CrispASR zawiera ostrzeżenie compiled CUDA 13.0 / runtime 13.5; nie usuwano go z diagnostyki.
-
-| Nieudana próba | Wynik |
+| Rejected variant | Observation |
 |---|---|
-| Whisper + VAD w pierwotnym przebiegu | Poprawny, 47,55 s |
-| Qwen + VAD, domyślne okna | Około 65,45 s do zatrzymania etapu; kod 31: brak czasów słów w jednym fragmencie i ostrzeżenie o collapse alignera |
-| Qwen + VAD, okna 15 s / overlap 1 s | 36,64 s procesu, kod 0, ale ostrzeżenia alignera i napis o zerowym czasie; wynik odrzucony |
-| Qwen bez VAD, okna 10 s / overlap 1 s | 33,77 s, kod 31: trzy fragmenty bez czasów słów |
-| Whisper bez VAD | Około 58,44 s etapu; 138 fragmentów, w tym 12 o zerowym czasie i wielokrotne powtórzenia; wynik odrzucony |
+| Qwen + VAD, default windows | About 65.45 s; exit 31, missing word times / aligner collapse |
+| Qwen + VAD, 15 s windows / 1 s overlap | 36.64 s, exit zero, but zero-duration cue and alignment warnings |
+| Qwen without VAD, 10 s windows | 33.77 s, exit 31, three chunks missing word times |
+| Whisper without VAD | About 58.44 s; 138 cues, including 12 zero-duration cues and repeated text |
 
-Qwen rzeczywiście korzystał z CUDA, osiągając 99% obciążenia i zaobserwowane 7753 MiB całkowitego użycia GPU. Zgłoszony błąd dotyczył wyrównania, nie OOM. Ścisłej kontroli nie wyłączano i nie nadawano sztucznie czasów nieprawidłowym napisom.
+Qwen reached 99% GPU utilization and 7753 MiB total GPU use. The reported failure was alignment, not OOM. Strict validation remained enabled and invalid cues were not assigned invented times.
 
-Logi pierwotnej próby: [manifest](D:/models/.cache/pipeline/5c7a7cc914964c9f85ec84fd80f23d1d/manifest.json), [Qwen](D:/models/.cache/pipeline/5c7a7cc914964c9f85ec84fd80f23d1d/asr-1/engine.log). Próby krótszych okien są w podfolderach tego etapu. Whisper bez VAD: [manifest](D:/models/.cache/pipeline/c2e745302ce34ff5886ef0e08df454a5/manifest.json).
+## Content findings
 
-## Co rzeczywiście wyszło
-
-| Miejsce | Porównanie z napisami autora |
+| Sample | Finding against visible creator captions |
 |---|---|
-| 00:03,5 — prowadząca | Autor: Mona Kumagai. ASR: `熊谷もなです`, ale EN: `Kuma Muna`. Ten sam błędny zapis jest w streszczeniu i obu wariantach tłumaczenia. Review zaakceptowało go bez ostrzeżenia. Nie wykonywano osobnego testu A/B, więc nie przypisuje się błędu wyłącznie wpływowi streszczenia. |
-| 00:07 — Sendai | Miejsce i ogólny sens zachowane. |
-| 00:44 — morze i ryby | Pierwsza część sensowna. Napis autora rozciąga myśl na sąsiednią wypowiedź; sam punkt czasowy nie wystarcza do oceny całego zdania. |
-| **00:46,5 — dostępność ryb** | Autor mówi o łatwej dostępności świeżych ryb. ASR dodaje `国の開発度` — poziom rozwoju kraju; EN powtarza ten błąd. Review go nie naprawiło, ale finalnie pozostawiło flagę możliwej zmiany znaczenia. |
-| 01:03 — zdrowa kuchnia | Ogólny sens zachowany; review skróciło sformułowanie EN. |
-| 01:28 — długie czarne włosy | Ogólny sens zachowany; review usunęło wzmacniające `definitely`. |
-| 01:57 — jedzenie i troska o innych | Sens myśli zachowany, ale finalny EN pozostaje bardzo długi. |
-| 02:25 — śnieg | Zachowany rozpoznawalny fragment myśli; zdanie należy oceniać z następnymi napisami. |
-| 02:52 — anime | Temat rozpoznany; EN `anime, right?` zmienia niuans względem odpowiedzi „chyba anime”. |
-| **03:19 — Pretty Cure** | JP `プリキュア` jest poprawne. EN: `we're paying attention to PuRiCuA`, zamiast odniesienia do stylizacji inspirowanej Pretty Cure. Poprawki nie pomogły; flaga spójności pozostała. |
-| **03:40 — czego nie lubią w Japonii** | Pytanie do rozmówców zamieniono na `Is there actually a place in Japan that I truly dislike?`, czyli pytanie o siebie i konkretne miejsce. Błędny punkt widzenia występował już przed poprawką. Finalne review pozostawiło flagę. |
-| 04:03 — dawne „yabai” | Rozpoznawalny sens widocznego fragmentu zachowany; pełny wygenerowany napis obejmuje także dalszą część zdania. |
-| 04:25 — przeprosiny | Sens zachowany: brak pomysłu, co powiedzieć. |
+| 3.5 s, host name | Mona Kumagai became “Kuma Muna” in EN; summary and both profiles shared the wrong name and review missed it |
+| 7 s, Sendai | Place and broad meaning retained |
+| 44 / 46.5 s, fresh fish | Availability was misrecognized as `国の開発度`, the country's development level; EN repeated it and review did not repair it |
+| 63 s, healthy food | Broad meaning retained, EN wording shortened |
+| 88 s, black hair | Broad meaning retained; review removed an intensifier |
+| 117 s, meals and consideration | Idea retained, but final EN was too long |
+| 145 s, snow | Recognizable fragment; adjacent cues needed for a full judgment |
+| 172 s, anime | “Anime, right?” changed the nuance of “I guess anime” |
+| 199 s, Pretty Cure | Correct JP `プリキュア` became “paying attention to PuRiCuA,” missing the styling reference |
+| 220 s, dislikes about Japan | A question to interviewees became a first-person question about a place; review left a flag |
+| 243 / 265 s | Broad meaning of the sampled “yabai” explanation and closing apology retained |
 
-Kontekst odczytał główne tematy filmu: jedzenie, troskę o innych, język i anime. Przeanalizował dwa bloki JP, bez pominiętych bloków. Streszczenie przekręciło jednak imię i zakończyło się twierdzeniem o braku wyraźnych negatywnych opinii, mimo późniejszej krytycznej części rozmów. Jest użyteczną hipotezą, lecz nie wiarygodną referencją.
+The summary recognized food, consideration, language, and anime, but misspelled the name and incorrectly suggested no clear negative opinions. No A/B experiment isolated summary influence, so errors cannot be attributed solely to context.
 
-## Czy poprawki i review pomagają
+## Review and readability
 
-34 napisy EN faktycznie zmieniono i zapisano wersje przed/po. Nie oznacza to 34 naprawionych błędów znaczenia: część zmian to skróty lub parafrazy. Dwa warianty tłumaczenia różniły się w 50 z 98 miejsc.
+Thirty-four changed EN cues are not 34 proven semantic repairs; some are shortening or paraphrase. Two profiles differed in 50/98 cues.
 
-| Wskaźnik | Przed review — wybrane EN | Finalnie |
+| Indicator | Selected EN before review | Final |
 |---|---:|---:|
-| Zbyt szybkie EN, limit 20 znaków/s | 13 | 11 |
-| Zbyt szybkie JP, limit 8 znaków/s | 16 | 16 |
-| Napisy z nakładaniem czasów | 0 | 0 |
-| Napisy z dowolnym ostrzeżeniem | 61 | 74 |
+| EN over 20 chars/s | 13 | 11 |
+| JP over 8 chars/s | 16 | 16 |
+| Cues with overlaps | 0 | 0 |
+| Warning-bearing cues | 61 | 74 |
 
-Wzrost liczby ostrzeżeń uwzględnia dodane flagi AI; nie oznacza sam w sobie pogorszenia tekstu. Finalnie 50 napisów ma flagi AI, 7 przekracza limit długości wiersza EN, 24 limit wiersza JP, a 15 trwa krócej niż 834 ms. Kategorie nakładają się. Flagi AI zawierają również nietrafione wskazania — np. dosłownie poprawne `Japan's food is delicious` oznaczono jako możliwy problem znaczenia.
+More warnings include newly added review notes and do not alone indicate worse text. Final JP and timing matched the valid Whisper+VAD source. Estimated splits and manual correction were not applied. Timing checks detected problems but did not automatically resolve all short displays/readability issues.
 
-Końcowe JP i czasy są identyczne z prawidłowym Whisperem + VAD. Nie stosowano szacowanego automatycznego podziału ani ręcznej korekty testowego wyniku. Kontrola czasów i CPS działa, ale ten przebieg **nie naprawił automatycznie krótkich ekspozycji i pozostałych problemów z czytelnością**.
+## Application fixes and provenance
 
-## Błędy aplikacji wykryte podczas testu
+A transient errno-only `EACCES` reading `en-1/partial.json` escaped Windows-winerror-only retry handling. Bounded retry now covers that variant while preserving errors for bad JSON or permanent denial. Reopening also exposed a callback on a deleted waveform `QProcess`; Qt-object validity checks were added.
 
-Obliczenia zakończyły się poprawnie, ale pierwsze uruchomienie testu Qt zakończyło się błędem asercji: interfejs raz dostał `PermissionError: [Errno 13]` przy odczycie `en-1/partial.json`. Wcześniejsze ponawianie odczytu obsługiwało tylko Windows `winerror`, a Python może zwracać sam `errno=EACCES`.
+After fixes, 74 relevant core/pipeline/UI tests passed, artifacts were audited, both SRT files matched complete final text/timing, and all 12 checkpoints replayed into SQLite. Nine tracks and 98 final cues were retained. The 25-minute inference was **not rerun** after the I/O fix; verified artifacts were replayed.
 
-Dodano ograniczone ponawianie również tego wariantu na Windows, bez ukrywania trwałej odmowy dostępu lub błędnego JSON. Przy ponownym otwieraniu projektu ujawnił się też opóźniony callback usuniętego `QProcess` waveformu; dodano kontrolę ważności obiektu Qt.
-
-Weryfikacja po poprawkach:
-
-- **74 testy poprawne**: `tests/test_core.py`, `tests/test_pipeline.py`, `tests/test_ui.py`, w tym nowe regresje dla EACCES bez winerror, trwałej odmowy dostępu i usuniętego QProcess.
-- Audyt wszystkich digestów ukończonych etapów, niepustych JP/EN, poprawnych czasów w granicach filmu oraz zgodności raportu z wynikiem.
-- Ponowne wczytanie obu SRT i porównanie całych tekstów oraz czasów z finalną ścieżką: zgodne.
-- Ponowne wczytanie wszystkich 12 ukończonych checkpointów przez interfejs i zapis/odczyt SQLite: poprawne, 9 ścieżek, 98 finalnych napisów.
-- Nie powtarzano 25-minutowych obliczeń po poprawce odczytu; wczytano istniejące, sprawdzone artefakty. Nie przedstawia się szybkiego odtworzenia checkpointów jako czasu obliczeń.
-
-## Wyniki do otwarcia
-
-- [Projekt aplikacji — 9 ścieżek](D:/models/.cache/benchmark-easy-japanese-1-final/projects/12abf706c5e74b808a721f4f5f7023cc/project.sqlite).
-- [Napisy EN](D:/models/.cache/benchmark-easy-japanese-1-final/projects/12abf706c5e74b808a721f4f5f7023cc/exports/c97c4289b82440f9a717f22735d5741d/English.srt).
-- [Napisy JP](D:/models/.cache/benchmark-easy-japanese-1-final/projects/12abf706c5e74b808a721f4f5f7023cc/exports/c97c4289b82440f9a717f22735d5741d/Japanese.srt).
-- [Raport szczegółowy i zmiany przed/po](D:/models/.cache/benchmark-easy-japanese-1-final/projects/12abf706c5e74b808a721f4f5f7023cc/exports/c97c4289b82440f9a717f22735d5741d/report.json).
-- [Manifest ukończonego przebiegu](D:/models/.cache/pipeline/c97c4289b82440f9a717f22735d5741d/manifest.json).
-- [Telemetria GPU](D:/models/.cache/benchmark-easy-japanese-1-final/gpu-telemetry.json).
-
-Wynik jest odizolowany od głównego projektu użytkownika. Najważniejsze dalsze prace wynikające z testu: obsługa awarii alignera i bezpiecznego wyboru ASR, lepsza kontrola nazw i perspektywy rozmówców, naprawa czytelności powiązana z audio oraz ograniczenie wielokrotnego ładowania LLM. Samo zwiększanie liczby review obecnym modelem nie wystarczyło do usunięcia wykazanych błędów.
+Completed run ID: `c97c4289b82440f9a717f22735d5741d`; local root: `D:\models\.cache\benchmark-easy-japanese-1-final`. Assets are not in Git. See [KOTOBA_AND_FIXES.md](KOTOBA_AND_FIXES.md) for later changes and remaining limits.

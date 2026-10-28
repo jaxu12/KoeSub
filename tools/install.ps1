@@ -16,12 +16,12 @@ if (Test-Path -LiteralPath $studioBundledPython) {
         }
     }
 }
-if (-not $studioPython) { throw 'Zainstaluj Python 3.12 x64, a potem uruchom instalator ponownie.' }
+if (-not $studioPython) { throw 'Install Python 3.12 x64, then run the installer again.' }
 $studioDrive = Get-PSDrive -Name ([System.IO.Path]::GetPathRoot($studioRoot).Substring(0,1))
-if ($studioDrive.Free -lt 2GB) { throw 'Brak 2 GiB wolnego miejsca na biblioteki aplikacji.' }
-Write-Host 'Instaluje biblioteki interfejsu. Modele AI NIE sa pobierane.'
+if ($studioDrive.Free -lt 2GB) { throw 'At least 2 GiB of free space is required for application dependencies.' }
+Write-Host 'Installing KoeSub dependencies. AI model weights are NOT downloaded.'
 & $studioPython -m venv --without-pip .venv
-if ($LASTEXITCODE -ne 0) { throw 'Nie udalo sie utworzyc srodowiska.' }
+if ($LASTEXITCODE -ne 0) { throw 'Could not create the Python environment.' }
 & $studioPython -m pip --python '.venv\Scripts\python.exe' install --no-cache-dir -r requirements.txt
-if ($LASTEXITCODE -ne 0) { throw 'Blad instalacji bibliotek. Sprawdz polaczenie i pip w Pythonie.' }
-Write-Host 'Gotowe. Uruchom Uruchom.bat.'
+if ($LASTEXITCODE -ne 0) { throw 'Dependency installation failed. Check your connection and Python pip installation.' }
+Write-Host 'Ready. Run Run.bat to launch KoeSub.'

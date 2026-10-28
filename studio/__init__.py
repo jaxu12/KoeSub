@@ -1,1 +1,1 @@
-"""AI Subtitle Studio — local desktop prototype."""
+"""KoeSub — local transcription and subtitle review."""

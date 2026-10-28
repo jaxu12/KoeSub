@@ -1,102 +1,75 @@
-# Pełny test nagrania i porównanie z referencją — 28.10.2026
+# Historical full-recording benchmark — 2026-10-28
 
-Poniższe pełne pomiary dotyczą wersji przed dodaniem osobnej analizy kontekstu całości i automatycznych poprawek w trybie zrównoważonym. Późniejsze zmiany i ich testy: [REVIEW_CONTEXT.md](REVIEW_CONTEXT.md).
+This report describes the earlier pipeline before whole-transcript context and later persistent LLM sessions. It is historical evidence, not a benchmark of the latest default Japanese-only mode. See [KOTOBA_AND_FIXES.md](KOTOBA_AND_FIXES.md) and [JP_SOURCE_REVIEW.md](JP_SOURCE_REVIEW.md) for later changes.
 
-## Zakres
+## Scope
 
-Przetworzono **cały film Job Interview, 188,6 s (3:08,6)**, a nie tylko wcześniejszą próbkę 20 s. To japońska animacja z narracją, autor Simpleshow Japan, [źródło i CC BY-SA 4.0](https://commons.wikimedia.org/wiki/File:Job_Interview.webm). Dwa pełne przebiegi: Vulkan i CUDA, na NVIDIA GeForce RTX 5060 8 GB, sterownik 621.01.
+The entire **188.6-second Job Interview** animation by Simpleshow Japan was processed on an RTX 5060 8 GB, driver 621.01. [Source and attribution](https://commons.wikimedia.org/wiki/File:Job_Interview.webm): CC BY-SA 4.0. The recording is not included in Git.
 
-Ustawienia: Whisper Large V3 FP16 GGML + Qwen3-ASR JA Anime Q8, oba z VAD; tekstowy wybór JP; Qwen3-4B Instruct Q4_K_M w profilach Naturalny/Wierny; wybór EN; pełne review AI, próba poprawy, ponowna ocena; formatowanie, JP/EN SRT i raport. Kontekst 4096, partie tłumaczenia po 6 napisów, opcjonalny szacowany podział zdań wyłączony. Surowe warianty zachowano. Pomiary obejmują ładowanie modeli i obsługę procesów.
+The full pipeline used Whisper Large V3 FP16 GGML and Qwen3-ASR JA Anime Q8 with VAD, JP selection, Qwen3-4B Instruct Q4_K_M natural/faithful EN profiles, EN selection, deep review, repair, verification, layout, and JP/EN export. Context was 4096, translation batches six cues, estimated splitting disabled. Durations include model loading and process handling.
 
-## Czasy całego filmu
+## Full-recording timings
 
-| Etap | Vulkan | CUDA |
+| Stage | Vulkan | CUDA |
 |---|---:|---:|
-| Odczyt metadanych | 0,36 s | 0,16 s |
-| Audio z istniejącego cache | 0,02 s | <0,01 s |
-| Whisper Large V3 | 39,59 s | 40,77 s |
-| Qwen ASR | 56,08 s | 30,12 s |
-| Porównanie / wybór JP | 50,78 s | 32,31 s |
-| Tłumaczenie Naturalne | 55,50 s | 48,22 s |
-| Tłumaczenie Wierne | 53,34 s | 46,23 s |
-| Porównanie / wybór EN | 143,95 s | 102,00 s |
-| Pełne review AI | 195,97 s | 150,03 s |
-| Próba poprawy i porównanie | 106,88 s | 84,80 s |
-| Ponowna ocena AI | 196,49 s | 144,59 s |
-| Formatowanie | 0,01 s | <0,01 s |
-| Raport i eksport | 0,02 s | 0,03 s |
-| **Cały przebieg pipeline, czas ścienny** | **899,67 s — 15:00** | **680,09 s — 11:20** |
+| Metadata probe, measured separately | 0.36 s | 0.16 s |
+| Cached audio | 0.02 s | <0.01 s |
+| Whisper Large V3 | 39.59 s | 40.77 s |
+| Qwen ASR | 56.08 s | 30.12 s |
+| JP selection | 50.78 s | 32.31 s |
+| Natural EN | 55.50 s | 48.22 s |
+| Faithful EN | 53.34 s | 46.23 s |
+| EN selection | 143.95 s | 102.00 s |
+| Deep review | 195.97 s | 150.03 s |
+| Repair / comparison | 106.88 s | 84.80 s |
+| Verification | 196.49 s | 144.59 s |
+| Layout | 0.01 s | <0.01 s |
+| Export / report | 0.02 s | 0.03 s |
+| **Pipeline wall time** | **899.67 s** | **680.09 s** |
 
-Odczyt metadanych jest mierzony osobno od czasu pipeline. Dodatkowy pomiar świeżego dekodowania całych 188,6 s do nowego WAV: **0,529 s**, bez użycia cache aplikacji; tymczasowy WAV usunięto. Nie resetowano cache systemu operacyjnego. Audio w dwóch głównych przebiegach było już przygotowane.
+Fresh audio extraction separately took 0.529 seconds. Main runs reused cached audio; the operating-system cache was not reset. CUDA was approximately 24.4% faster for these particular sequential Vulkan→CUDA trials, not a repeated average. Whisper itself did not speed up.
 
-CUDA skróciła ten konkretny pełny przebieg o około **24,4%**. Whisper nie przyspieszył, Qwen ASR potrzebował około połowy czasu. To pojedyncze pomiary w kolejności Vulkan → CUDA; nie jest to benchmark uśredniony. Wybory modelu i końcowa segmentacja mogą się różnić, a pliki mogą być już w cache systemowym.
+## GPU evidence
 
-## Potwierdzenie CUDA i pamięci
+CrispASR reported supported CUDA backends and actual CUDA buffers / `CUDA0`; the LLM used `--device CUDA0 --n-gpu-layers 99` with a CUDA backend log. This was not inferred only from a GUI setting.
 
-- CrispASR CUDA 0.8.45 zgłasza `backends: cpu,cuda`, wykrywa RTX 5060, a Qwen wybiera `CUDA0`. Log Whispera potwierdza włączone GPU i bufory CUDA.
-- Tłumacz używa osobnego oficjalnego llama.cpp b11935 CUDA, z `--device CUDA0 --n-gpu-layers 99`. Log silnika potwierdza backend CUDA z architekturą Blackwell. To nie jest wniosek wyłącznie z zaznaczonej opcji GUI.
-- `nvidia-smi` próbkowano co około 2 s. Szczyt całej karty: **7725 MiB / 8151 MiB** podczas Qwena ASR, **5843 MiB** przy Whisperze, **4564 MiB** przy tłumaczeniu. Telemetria obejmuje również pulpit i inne procesy. Maksymalne próbkowane użycie GPU: 96%. Brak błędów odczytu telemetrii i brak awarii modelu.
-- Pakiet CrispASR wypisuje ostrzeżenie o różnicy wersji podrzędnej: kompilacja CUDA 13.0, runtime 13.5. Testy inferencji zakończyły się prawidłowo. Po normalizacji tekst Whispera był taki sam na obu backendach; różnica Qwen CUDA/Vulkan wyniosła około 0,62% znaków. Nie ukryto ostrzeżenia w logach.
-- Obecne domyślne ustawienia aplikacji wskazują **CUDA dla ASR i tłumacza**. Sprawdzono ich odczyt w nowym oknie Qt. Poprzednie ustawienia: `data/settings.before-cuda.json`; runtime’y Vulkan pozostają dostępne.
-- Pobrano wyłącznie oficjalne runtime’y CUDA, zweryfikowano opublikowane SHA-256. Archiwa usunięto po rozpakowaniu. Istniejące wagi modeli wykorzystano z D: bez duplikowania. Przyrost danych na D: podczas całej tej serii to około 1,4 GiB, głównie runtime’y.
+Two-second `nvidia-smi` sampling observed whole-device peaks of 7725/8151 MiB during Qwen ASR, 5843 MiB during Whisper, and 4564 MiB during translation, with up to 96% utilization. These include desktop and unrelated GPU use. No telemetry read errors or model failures occurred. A compiled-CUDA-13.0/runtime-13.5 warning was retained in logs. Normalized Whisper text matched between backends; Qwen outputs differed by about 0.62% of characters.
 
-## Ocena wyniku i wykryte problemy
+Only official runtime archives were added; checksums were verified and existing model weights reused. Vulkan artifacts were preserved. Later experiments use CUDA only.
 
-Oba przebiegi ukończyły wszystkie 12 etapów, zachowały 10 ścieżek i przeszły audyt zapisanych checkpointów, kompletności EN, granic czasów oraz zgodności tekstu/czasów po ponownym imporcie SRT. **To potwierdza działanie przebiegu, nie gotowość napisów do publikacji.**
+## Outcome and limitations
 
-| Wskaźnik końcowego wyniku | Vulkan | CUDA |
+Both runs completed 12 stages and retained ten tracks. Artifact integrity, nonempty EN, time bounds, SRT round trips, and report consistency were checked.
+
+| Final indicator | Vulkan | CUDA |
 |---|---:|---:|
-| Napisy | 52 | 55 |
-| Napisy z co najmniej jednym ostrzeżeniem | 45 | 46 |
-| EN powyżej 20 znaków/s | 6 | 6 |
-| JP powyżej 8 znaków/s | 13 | 15 |
-| Napisy uczestniczące w nakładaniu czasów | 2 — jedna para | 4 — dwie pary |
-| Napisy oznaczone przez końcowe review AI | 8 | 13 |
-| Tłumaczenia zmienione przez etap poprawek | 9 | 7 |
+| Cues | 52 | 55 |
+| Warning-bearing cues | 45 | 46 |
+| EN above 20 chars/s | 6 | 6 |
+| JP above 8 chars/s | 13 | 15 |
+| Cues involved in overlap | 2 | 4 |
+| AI-flagged cues | 8 | 13 |
+| EN cues changed during repair | 9 | 7 |
 
-Ostrzeżenia obejmują też długość wierszy, małe przerwy oraz rozbieżności ASR. Jeden napis może mieć kilka ostrzeżeń. Ustawienia są celowo restrykcyjne; 46 ostrzeżeń nie oznacza 46 błędnych tłumaczeń.
+Warnings overlap and are not confirmed error counts. Raw ASR tracks had no overlaps; mixing selected groups introduced them. This exposed the need for timing-compatible selection, implemented later. The result remained `needs_review`; no unsupported retiming was used to hide the problem.
 
-**Konkretny problem do naprawienia:** oba surowe ASR w każdym przebiegu nie miały nakładających się napisów, a nakładanie pojawiło się dopiero po wyborze fragmentów z różnych wariantów. Krok mieszania JP potrzebuje kontroli zgodności czasów między sąsiednimi wybranymi grupami. Tego problemu nie zamaskowano przesuwaniem granic bez potwierdzenia w audio. Wynik pozostaje `needs_review`.
+Semantic issues remained, including a suspicious metaphor rendered as “clouds nesting in trees.” No complete independently checked Job Interview transcript was used, so no ASR accuracy percentage is reported.
 
-Review nie rozwiązuje wszystkich problemów znaczenia. Przykładowo w wyniku Vulkana pozostało podejrzane tłumaczenie metafory jako „clouds nesting in trees”; model sam oznaczył możliwą zmianę znaczenia. Nie wykonano pełnej ręcznej korekty ani odsłuchowej oceny wszystkich napisów. Dla Job Interview nie ma w tym teście niezależnej transkrypcji referencyjnej, więc nie podaje się jego „procentu poprawności ASR”.
+Decision/review logs alone started the LLM 172 times on Vulkan and 189 on CUDA, accounting for approximately 440 and 263 seconds of model loading. This motivated later batching and persistent owned sessions.
 
-**Wąskie gardło wydajności:** tylko decyzje i review (bez logów partii tłumaczenia przechowywanych w osobnym cache) uruchomiły LLM 172 razy na Vulkanie i 189 na CUDA. Z logów: samo ładowanie modelu zajęło odpowiednio około 440 s i 263 s. Kolejnym usprawnieniem powinno być przetwarzanie wielu decyzji w jednej partii przy zachowaniu walidacji ID i checkpointów; zwolnienie VRAM jest potrzebne między ciężkimi etapami, a ponowne ładowanie przy każdym pojedynczym werdykcie jest kosztowne.
+## Independent subtitle comparison
 
-## Film z istniejącą transkrypcją i rzeczywiste porównanie
+A separate [MCDC Japanese onboarding meeting](https://commons.wikimedia.org/wiki/File:MCDC_Onboarding_%22Ask_me_Anything%22_session_-_Japanese_language.webm) by TCappelletto (WMF), CC BY-SA 4.0, was acquired as 23:10 of 240p video, approximately 20.9 MiB. Existing [JP captions](https://commons.wikimedia.org/wiki/TimedText:MCDC_Onboarding_%22Ask_me_Anything%22_session_-_Japanese_language.webm.ja.srt) and [EN captions](https://commons.wikimedia.org/wiki/TimedText:MCDC_Onboarding_%22Ask_me_Anything%22_session_-_Japanese_language.webm.en.srt) were preserved with revision and attribution metadata. Only SRT separators/numbering were repaired; ten empty EN entries were explicitly omitted. Caption text was not corrected using our models.
 
-Pobrano **MCDC Onboarding “Ask me Anything” — Japanese language**, rzeczywiste nagranie spotkania z 4 listopada 2022, **23:10**, około **20,9 MiB** w wersji 240p. Autor: TCappelletto (WMF), CC BY-SA 4.0. [Film](https://commons.wikimedia.org/wiki/File:MCDC_Onboarding_%22Ask_me_Anything%22_session_-_Japanese_language.webm), [istniejące napisy JP](https://commons.wikimedia.org/wiki/TimedText:MCDC_Onboarding_%22Ask_me_Anything%22_session_-_Japanese_language.webm.ja.srt), [istniejące napisy EN](https://commons.wikimedia.org/wiki/TimedText:MCDC_Onboarding_%22Ask_me_Anything%22_session_-_Japanese_language.webm.en.srt).
+The ASR-only comparison covered **01:09.380–03:01.680**, 112.3 seconds, 22 complete reference cues, and 408 normalized characters. It did not process the whole 23-minute meeting or translate/review this second recording.
 
-Zachowano oryginalne pliki napisów, ID rewizji, autorów edycji i sumy kontrolne. Przygotowana wersja JP ma 254 wpisy; EN ma 248 niepustych wpisów. Naprawiono wyłącznie separatory/numerację SRT; 10 pustych wpisów źródłowego EN pominięto z jawnym zapisem w `source.json`. Treści nie poprawiano naszą transkrypcją ani modelem.
-
-Porównanie dotyczy **01:09.380–03:01.680**, czyli **112,3 s**, 22 kompletnych wpisów referencyjnych, 408 znaków po normalizacji. Nie przetworzono całego 23-minutowego nagrania. Na tym fragmencie sprawdzono dwa ASR; tłumaczenia i review tego drugiego materiału nie uruchamiano.
-
-| ASR na CUDA | Czas etapu | Różnice znakowe względem referencji | CER |
+| CUDA ASR | Stage duration | Character edits | CER |
 |---|---:|---:|---:|
-| Whisper Large V3 | 24,70 s | 25 / 408 | **6,13%** |
-| Qwen3-ASR JA Anime | 22,55 s | 38 / 408 | **9,31%** |
+| Large V3 | 24.70 s | 25/408 | 6.13% |
+| Qwen3-ASR JA Anime | 22.55 s | 38/408 | 9.31% |
 
-Przygotowanie audio: 0,84 s. Cały test z porównaniem i zapisem: 48,38 s. CER liczono dokładną odległością Levenshteina po Unicode NFKC, usunięciu interpunkcji, spacji i oznaczeń muzyki; nie zrównywano kanji z kana ani różnych zapisów liczebników. Wyniki zawierają osobno zamiany/usunięcia/dodania i przykłady rozbieżności. Nie użyto procentu zgodności dwóch naszych modeli jako miary trafności.
+Audio preparation took 0.84 seconds; total test time was 48.38 seconds. CER uses exact Levenshtein distance after Unicode NFKC and removal of punctuation, spaces, and music markers. Kanji/kana and numeral spellings are not equated. Community captions may contain errors and omissions; this measures differences against them, not certain audio errors or translation quality.
 
-**Wynik jest różnicą względem opublikowanych napisów społecznościowych, nie pewnym błędem względem audio.** Występują różnice zapisu imion, pomijane słowa i możliwe błędy samej referencji. Nie jest to niezależnie zatwierdzony zbiór wzorcowy ani pomiar jakości tłumaczenia. Na tym fragmencie Whisper był bliższy opublikowanym napisom.
+## Local provenance
 
-## Pliki do sprawdzenia
-
-- [Projekt całego łatwego filmu — CUDA](D:/models/.cache/benchmark-easy-cuda-full/projects/cb629c6ac27f47878fe905cc614e728f/project.sqlite).
-- [Projekt referencja JP + Whisper + Qwen](D:/models/.cache/benchmark-reference-cuda/project.sqlite): gotowy do otwarcia w aplikacji i porównania ścieżek.
-- [Nagranie referencyjne 23:10](D:/models/test-media/mcdc-japanese/MCDC-Japanese-23m-240p.webm), [JP SRT](D:/models/test-media/mcdc-japanese/reference.ja.srt), [EN SRT](D:/models/test-media/mcdc-japanese/reference.en.srt).
-- [Czasy CUDA](D:/models/.cache/benchmark-easy-cuda-full/timings.json), [Vulkan](D:/models/.cache/benchmark-easy-full/timings.json), [pełne porównanie jakości i logów](D:/models/.cache/benchmark-easy-cuda-full/comparison-summary.json).
-- [Telemetria CUDA](D:/models/.cache/benchmark-easy-cuda-full/gpu-telemetry.json), [wyniki CER i przykłady](D:/models/.cache/benchmark-reference-cuda/comparison.json).
-- Manifest Vulkan: `D:\models\.cache\pipeline\3453c5f64d91402ebee141520c25963e\manifest.json`.
-- Manifest CUDA: `D:\models\.cache\pipeline\a7e62c5e33794bf183c7573536c7e103\manifest.json`.
-- Manifest referencji, tylko ASR: `D:\models\.cache\pipeline\c88c5cd80d8940d0b4d1e22a615ac464\manifest.json`.
-
-## Powtórzenie pomiaru
-
-```powershell
-.\.venv\Scripts\python.exe -m tools.verify_pipeline --media samples\media\Job_Interview.webm --full --cuda --data-dir D:\models\.cache\benchmark-easy-cuda-full
-.\.venv\Scripts\python.exe -m tools.verify_pipeline --media samples\media\Job_Interview.webm --full --vulkan --data-dir D:\models\.cache\benchmark-easy-full
-.\.venv\Scripts\python.exe -m tools.verify_reference_asr --template D:\models\.cache\pipeline\a7e62c5e33794bf183c7573536c7e103\manifest.json --cuda
-.\.venv\Scripts\python.exe -m pytest -q
-```
-
-Testy automatyczne po zmianach: **99 zaliczonych**. Obejmują jawny wybór CUDA/Vulkan/CPU, obliczanie CER i przygotowanie źródłowych napisów. Osobny test nowego okna Qt potwierdził odczyt zapisanych domyślnych ustawień CUDA.
+Historical run IDs under `D:\models\.cache\pipeline`: Vulkan `3453c5f64d91402ebee141520c25963e`, CUDA `a7e62c5e33794bf183c7573536c7e103`, reference ASR `c88c5cd80d8940d0b4d1e22a615ac464`. Benchmark roots include `benchmark-easy-full`, `benchmark-easy-cuda-full`, and `benchmark-reference-cuda`. Artifacts and recordings are excluded from Git. The historical suite had 99 passing tests; current verification is in [TEST_REPORT.md](TEST_REPORT.md).

@@ -233,7 +233,7 @@ class ProjectStore:
         with sqlite3.connect(f"{self.path.resolve().as_uri()}?mode=ro", uri=True) as db:
             row = db.execute("SELECT payload FROM project WHERE id=1").fetchone()
         if not row:
-            raise ValueError("Plik nie zawiera projektu AI Subtitle Studio.")
+            raise ValueError("Plik nie zawiera projektu KoeSub.")
         return Project.from_dict(json.loads(row[0]))
 
 

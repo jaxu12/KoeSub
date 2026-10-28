@@ -1,22 +1,24 @@
-# Współtworzenie AI Subtitle Studio
+# Contributing to KoeSub
 
-Rozwijamy prototyp lokalnego narzędzia do transkrypcji i review napisów. Obecny priorytet to trafność oryginalnego JP, porównania ASR oraz zachowanie czasów i ręcznych poprawek.
+We are building a local tool for Japanese transcription and subtitle review. The current priority is source-transcript accuracy, useful comparisons between ASR hypotheses, and preservation of timing and manual edits.
 
-## Praca nad kodem
+**Repository language:** Write READMEs, documentation, issue descriptions, and pull request descriptions in English. Preserve Japanese examples in their original language. Do not introduce Polish-language documentation.
 
-1. Przygotuj środowisko według [README](README.md) i zainstaluj `requirements-dev.txt`.
-2. Utwórz gałąź dla swojej zmiany, np. `git switch -c improve-asr-review`.
-3. Opisz problem i oczekiwany wynik. Zmiany zachowania powinny mieć odpowiednią weryfikację.
-4. Uruchom `.\.venv\Scripts\python.exe -m pytest -q` i podaj wynik przy przekazywaniu poprawki.
+## Working on the code
 
-Kod interfejsu i pipeline jest w `studio/`, testy w `tests/`, a narzędzia diagnostyczne i testy sprzętowe w `tools/`. Małe przykłady syntetyczne są w `samples/`.
+1. Set up the environment from [README.md](README.md) and install `requirements-dev.txt`.
+2. Create a branch, for example `git switch -c improve-asr-review`.
+3. Describe the concrete problem and intended behavior. Validate behavior changes with appropriate checks.
+4. Run `.\.venv\Scripts\python.exe -m pytest -q` and report the result with your change.
 
-W zmianach ASR zachowuj źródłowe wyniki i pochodzenie decyzji. Nie nadpisuj ręcznych poprawek ani nie przedstawiaj zgodności modeli jako dowodu poprawności. Oddzielaj test działania pipeline od pomiaru jakości na niezależnej referencji. Przy testach sprzętowych podaj model, runtime, backend, długość nagrania, czas wykonania i informację o użyciu cache.
+The app and pipeline are in `studio/`, tests in `tests/`, and diagnostic and hardware-verification utilities in `tools/`. Small synthetic examples live in `samples/`. The Python package remains named `studio` for compatibility; the product is KoeSub.
 
-## Zgłaszanie błędów
+Preserve raw ASR results and decision provenance. Do not overwrite manually edited text or treat model agreement as audio ground truth. Separate pipeline integration checks from quality evaluation against an independent reference. For hardware experiments, record the model, runtime, backend, recording length, elapsed time, and use of caches.
 
-Podaj wersję Pythona, system, GPU, używany model i runtime, kroki odtworzenia oraz wynik oczekiwany i rzeczywisty. Dołącz krótki fragment logu po usunięciu prywatnych ścieżek i danych. Przy problemach z jakością ASR pomocny jest krótki fragment audio wraz z referencją, jeśli możesz go udostępnić.
+## Reporting a bug
 
-Nie dodawaj do Git wag modeli, nagrań, cache, ustawień użytkownika ani baz prywatnych projektów. Przed commitem sprawdź `git status` i `git diff --cached`. Media oraz modele udostępniaj wyłącznie zgodnie z ich własnymi licencjami.
+Include your Python version, OS, GPU, model and runtime, reproduction steps, and expected and actual behavior. Share a short log excerpt with private paths and data removed. A short audio excerpt and a reference transcript help with ASR issues when you have permission to share them.
 
-Wkład w oryginalny kod i dokumentację projektu jest przyjmowany na tej samej licencji MIT co projekt. Przy dodawaniu cudzego kodu zachowaj jego informacje o autorach i licencji.
+Do not commit model weights, recordings, caches, user settings, or private project databases. Check `git status` and `git diff --cached` before committing. Respect the licenses of external materials.
+
+Contributions to original project code and documentation use the project's MIT license. Preserve attribution and licensing notices when adding third-party code.
