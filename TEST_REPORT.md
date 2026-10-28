@@ -2,7 +2,7 @@
 
 ## Current source-only verification
 
-As of 2026-10-28, **208 tests pass on a clean source-only copy**, without developer data, models or recordings, using the installed development dependencies (verified separately from GPU inference). The test temporary directory is `.pytest-tmp`, which is ignored by Git. A former `data/test-tmp` setting failed on a fresh checkout with no `data` directory and was corrected.
+As of 2026-10-28, **231 tests pass on a clean source-only copy**, without developer data, models or recordings, using the installed development dependencies (verified separately from GPU inference). The test temporary directory is `.pytest-tmp`, which is ignored by Git. A former `data/test-tmp` setting failed on a fresh checkout with no `data` directory and was corrected.
 
 The suite covers editing/undo, persistence, provenance, format round trips, time/readability checks, strict model-response validation, manual translation protection, source phrase comparison, stage ordering before EN, pause/resume, run locks, timeouts, owned child processes, caches, and Qt behavior. Unit tests do not require model weights or a GPU.
 
@@ -11,6 +11,8 @@ The evaluation suite additionally checks exact complete-phrase oracle paths agai
 The source-review v2 suite also covers high-confidence disagreements, retention of baseline-risk budget, real-time scan reuse, auxiliary failure handling, original-track and stale-choice protection, saved human decisions, undo, and restoration of reused native costs. Results and limits are in [ASR_SCAN_REVIEW_V2.md](ASR_SCAN_REVIEW_V2.md).
 
 Source review v3 adds third-decoder corroboration without auxiliary-majority override, unresolved-only routing, manual protection, grouped native output ownership, alignment-warning isolation and fail-closed attribution, fatal device failures, immutable retry receipt replay, quality failure exports, exact context-choice validation, context-only findings without transcript rewriting, scene-gap boundaries, and persistence of disabled third-model selection. See [SOURCE_REVIEW_V3.md](SOURCE_REVIEW_V3.md) for separate hardware and reference results.
+
+The source-quality evaluation suite covers unverified references, missing output denominators, paired versus unmatched listening coverage, clean versus unassessed cases, orthography versus semantic events, exact quote validation, stale evidence, corrected reference history, changed audio, concurrent saves, protected exports, default hypothesis masking and preservation of the active subtitle project. Real-data checks reuse cached ASR and test playback only; they do not certify reference accuracy. See [SOURCE_QUALITY_EVALUATION.md](SOURCE_QUALITY_EVALUATION.md).
 
 ## Historical integration checks
 

@@ -20,6 +20,7 @@ The current priority is Japanese transcription. English translation is optional.
 - Timing, overlap, reading-speed, and line-length checks; SRT, ASS, SSA, and TXT support. Imported ASS/SSA styling is not preserved.
 - Optional local GGUF translation through llama.cpp; LM Studio is a secondary backend.
 - Logs, resumable stages, cancellation, and validation of completed artifacts.
+- An offline **Source quality** workbench: reference listening, baseline/after-review comparison, explicit omission/addition/name/meaning labels, paired coverage and JSON/Markdown reports. Unassessed content errors are not counted as zero.
 
 Model agreement is evidence, not proof of what was said. Review compares text produced from audio; it can miss errors shared by several models. Model support also depends on conversion quality and timestamp alignment.
 
@@ -63,9 +64,11 @@ Dependencies, models, and media retain their own licenses. See [THIRD_PARTY.md](
 .\.venv\Scripts\python.exe -m pytest -q
 ```
 
-The current suite contains **208 passing tests**, also verified on a clean source-only copy without developer data or models. It covers editing, persistence, manual-change protection, ASR comparison, third-model routing, grouped output ownership and failure isolation, context-choice validation, evaluation-only oracle selection, stage ordering, exports, and resume behavior. Unit tests do not require model weights or a GPU. Hardware verification scripts in `tools/` require separately prepared runtimes, models, and media.
+The current suite contains **231 passing tests**, also verified on a clean source-only copy without developer data or models. It covers editing, persistence, manual-change protection, ASR comparison, third-model routing, grouped output ownership and failure isolation, context-choice validation, evaluation-only oracle selection, stage ordering, exports, and resume behavior. Unit tests do not require model weights or a GPU. Hardware verification scripts in `tools/` require separately prepared runtimes, models, and media.
 
 Recorded experiments and their limitations:
+
+- [Source-quality measurement and audio reference audit workflow](SOURCE_QUALITY_EVALUATION.md)
 
 - [Third ASR, Japanese context review, grouped CUDA inference, and reference checks](SOURCE_REVIEW_V3.md)
 - [Auxiliary scan, editable review, additional clips, and full-movie regression checks](ASR_SCAN_REVIEW_V2.md)

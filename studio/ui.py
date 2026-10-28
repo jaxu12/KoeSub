@@ -32,6 +32,7 @@ from .pipeline_ui import PipelinePanel
 from .editor_tools import EditorTools
 from .core import export_subtitles, load_subtitles
 from .ai_review_ui import AIReviewPanel
+from .evaluation_ui import EvaluationPanel
 from .storage import (DATA, ROOT, Settings, audio_cache_path, audio_metadata, check_space,
                       discover_models, existing_parent, offline_env)
 
@@ -294,6 +295,8 @@ class Window(QMainWindow):
         self.tabs.addTab(self.pipeline_panel, 'Zrób wszystko')
         self.ai_review_panel=AIReviewPanel(self)
         self.tabs.addTab(self.ai_review_panel,'Propozycje AI')
+        self.evaluation_panel=EvaluationPanel(self)
+        self.tabs.addTab(self.evaluation_panel,'Source quality')
         progress = QHBoxLayout()
         self.progress_label = label("Gotowy", True)
         self.progress = QProgressBar()
@@ -1830,6 +1833,11 @@ class Window(QMainWindow):
         self.progress_label.setText("Zapisano tłumaczenie" + (f" • {errors} błędów do ponowienia" if errors else " • sprawdź kontrolę i eksportuj EN"))
 
     def closeEvent(self, event):
+        if self.evaluation_panel.has_unsaved_reference():
+            self.tabs.setCurrentWidget(self.evaluation_panel)
+            self.evaluation_panel.status.setText('Save the reference audit or discard its edits before closing KoeSub.')
+            event.ignore()
+            return
         if self.busy:
             QMessageBox.information(self, "Trwa zadanie", "Anuluj bieżące zadanie przed zamknięciem aplikacji. Zapisane wyniki pozostaną w projekcie.")
             event.ignore()
@@ -1844,6 +1852,7 @@ class Window(QMainWindow):
             event.ignore()
             return
         self.player.stop()
+        self.evaluation_panel.player.stop()
         self.editor_tools.wave.closed=True
         self.editor_tools.wave.stop()
         event.accept()

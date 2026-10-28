@@ -11,6 +11,7 @@ def main():
     parser.add_argument('data_dir', type=Path)
     parser.add_argument('--title', default='KoeSub • benchmark results')
     parser.add_argument('--source-review',action='store_true',help='Open the saved JP phrase comparison')
+    parser.add_argument('--evaluation',type=Path,help='Open an offline source-quality listening study')
     args = parser.parse_args()
     if not (args.data_dir / 'last_project.json').is_file():
         parser.error('Benchmark project does not exist')
@@ -25,6 +26,9 @@ def main():
     if args.source_review:
         window.tabs.setCurrentWidget(window.pipeline_panel)
         window.pipeline_panel.show_retry_results()
+    if args.evaluation:
+        window.evaluation_panel.load_study(args.evaluation)
+        window.tabs.setCurrentWidget(window.evaluation_panel)
     app.exec()
 
 

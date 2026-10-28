@@ -10,6 +10,7 @@ from studio import storage, ui
 from studio.core import Project, ProjectStore, Segment, Track
 from studio.review_ui import SplitPreviewDialog
 from studio.storage import Settings
+from tests.test_source_evaluation import study_files
 
 
 @pytest.fixture(scope='module')
@@ -457,3 +458,52 @@ def test_review_automatic_finish_updates_english_counter_and_supports_undo(windo
     assert w.job['applied_changes']==1 and 'zmieniono EN: 1' in w.progress_label.text()
     w.undo()
     assert w.project.active.segments[0].translation=='House.'
+
+
+def test_offline_quality_ui_audits_and_rates_without_modifying_project(window,study_files,tmp_path,monkeypatch):
+    from copy import deepcopy
+    from studio.source_evaluation import StudyStore,quality_report
+    from studio.evaluation_ui import ErrorEventDialog
+    from PySide6.QtWidgets import QDialog
+    w,_=window;panel=w.evaluation_panel;before=deepcopy(w.project.to_dict())
+    study=study_files[2];path=tmp_path/'study.json';StudyStore(path).save(study);panel.load_study(path)
+    assert 'paired listening reviews: 0' in panel.summary.text()
+    assert panel.masked() and 'Hidden during reference audit' in panel.hypotheses['baseline'].toPlainText()
+    panel.reviewer.setText('synthetic-test');panel.reference_note.setText('Synthetic fixture audit')
+    panel.reference_listened.setChecked(True);panel.save_reference.click()
+    assert not panel.has_unsaved_reference()
+    assert not panel.masked() and '山田' in panel.hypotheses['baseline'].toPlainText()
+    monkeypatch.setattr(ErrorEventDialog,'exec',lambda self:QDialog.DialogCode.Accepted)
+    monkeypatch.setattr(ErrorEventDialog,'values',lambda self:{'category':'name','severity':'major',
+        'reference_quote':'田中','hypothesis_quote':'山田','note':'Synthetic name mismatch.'})
+    panel.add_event.click()
+    assert panel.events.rowCount()==1 and not panel.rating_listened.isChecked()
+    panel.rating_listened.setChecked(True);panel.save_rating.click()
+    panel.variants.setCurrentIndex(1);panel.rating_listened.setChecked(True);panel.save_rating.click()
+    report=quality_report(StudyStore(path).load())
+    assert report['paired_semantic_comparison']['improved']==1
+    assert report['paired_semantic_comparison']['events_by_category']['baseline']['name']==1
+    assert w.project.to_dict()==before
+    panel.export_report(tmp_path/'quality-report.json');assert (tmp_path/'quality-report.md').is_file()
+
+
+def test_quality_reference_drafts_block_navigation_and_close_until_saved_or_discarded(window,study_files,tmp_path):
+    from studio.source_evaluation import StudyStore
+    from PySide6.QtGui import QCloseEvent
+    w,_=window;panel=w.evaluation_panel;path=tmp_path/'study.json';StudyStore(path).save(study_files[2]);panel.load_study(path)
+    panel.reference.setPlainText('別の参照字幕です。')
+    assert panel.has_unsaved_reference() and not panel.cases.isEnabled() and not panel.save_rating.isEnabled()
+    event=QCloseEvent();w.closeEvent(event);assert not event.isAccepted()
+    assert 'before closing' in panel.status.text()
+    panel.discard_reference.click();assert not panel.has_unsaved_reference() and panel.cases.isEnabled()
+    panel.reference_note.setText('An unsaved audit note')
+    assert panel.has_unsaved_reference() and not panel.open_button.isEnabled()
+    panel.discard_reference.click();assert not panel.has_unsaved_reference()
+
+
+def test_quality_event_dialog_is_a_normal_qt_widget(window,app):
+    from studio.evaluation_ui import ErrorEventDialog
+    w,_=window;dialog=ErrorEventDialog(w,'田中','山田');dialog.show();app.processEvents()
+    dialog.category.setCurrentIndex(dialog.category.findData('meaning'))
+    assert 'fact' in dialog.definition.text() and dialog.values()['category']=='meaning'
+    dialog.close()
