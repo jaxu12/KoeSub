@@ -59,10 +59,11 @@ Dependencies, models, and media retain their own licenses. See [THIRD_PARTY.md](
 .\.venv\Scripts\python.exe -m pytest -q
 ```
 
-The current suite contains **156 passing tests**, including a clean repository snapshot with no local data or models. It covers editing, persistence, manual-change protection, ASR comparison, phrase review, stage ordering, exports, and resume behavior. Unit tests do not require model weights or a GPU. Hardware verification scripts in `tools/` require separately prepared runtimes, models, and media.
+The current suite contains **173 passing tests**, including a clean repository snapshot with no local data or models. It covers editing, persistence, manual-change protection, ASR comparison, phrase review, evaluation-only oracle selection, stage ordering, exports, and resume behavior. Unit tests do not require model weights or a GPU. Hardware verification scripts in `tools/` require separately prepared runtimes, models, and media.
 
 Recorded experiments and their limitations:
 
+- [Ten-clip ASR/fusion benchmark and reference-guided selection opportunity](ASR_FUSION_BENCHMARK.md)
 - [Japanese phrase review and transcript fusion](JP_SOURCE_REVIEW.md)
 - [Japanese-only transcription, retries, and reference data](JP_TRANSCRIPTION_AND_REFERENCES.md)
 - [Kotoba and full-pipeline improvements](KOTOBA_AND_FIXES.md)
