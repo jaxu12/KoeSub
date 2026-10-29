@@ -2,7 +2,7 @@
 
 ## Current source-only verification
 
-As of 2026-10-28, **261 tests pass on a clean source-only copy**, without developer data, models or recordings, using the installed development dependencies (verified separately from GPU inference). The test temporary directory is `.pytest-tmp`, which is ignored by Git. A former `data/test-tmp` setting failed on a fresh checkout with no `data` directory and was corrected.
+As of 2026-10-29, **272 tests pass on a clean source-only copy**, without developer data, models or recordings, using the installed development dependencies (verified separately from GPU inference). The test temporary directory is `.pytest-tmp`, which is ignored by Git. A former `data/test-tmp` setting failed on a fresh checkout with no `data` directory and was corrected.
 
 The suite covers editing/undo, persistence, provenance, format round trips, time/readability checks, strict model-response validation, manual translation protection, source phrase comparison, stage ordering before EN, pause/resume, run locks, timeouts, owned child processes, caches, and Qt behavior. Unit tests do not require model weights or a GPU.
 
@@ -15,6 +15,8 @@ Source review v3 adds third-decoder corroboration without auxiliary-majority ove
 The source-quality evaluation suite covers unverified references, missing output denominators, paired versus unmatched listening coverage, clean versus unassessed cases, orthography versus semantic events, exact quote validation, stale evidence, corrected reference history, changed audio, concurrent saves, protected exports, default hypothesis masking and preservation of the active subtitle project. Real-data checks reuse cached ASR and test playback only; they do not certify reference accuracy. See [SOURCE_QUALITY_EVALUATION.md](SOURCE_QUALITY_EVALUATION.md).
 
 Adaptive-audio and alignment coverage includes quiet-boundary planning, distinct-context/model requirements, VAD profile limits, audio/crop hashes and receipt replay, bounded alignment blocks, punctuation/manual protection, zero-duration coalescing without interpolation, exact text preservation, global overlap avoidance, reading exposure, audio-based splitting, LLM release and fatal device errors. Hardware and cached-reference results are separated in [ADAPTIVE_AUDIO_AND_ALIGNMENT.md](ADAPTIVE_AUDIO_AND_ALIGNMENT.md).
+
+Eleven benchmark tests cover deterministic noise/SNR/clipping, label exclusion from production inputs, ASR-buffer versus owned-PID GPU proof, unique full-cue timing matches, whitespace-only round trips, weighted CER and missing coverage, no-speech diagnostics and frozen-collection integrity. The full suite passed in 15.75 seconds and a clean copy in 18.15 seconds. Separately, the frozen 17-case CUDA check exposed a one-edit meeting regression, unchanged short-clip CER, two failed no-speech outcomes and one whitespace-only export mismatch. See [CURRENT_PIPELINE_BENCHMARK.md](CURRENT_PIPELINE_BENCHMARK.md); those findings are not counted as passing quality tests.
 
 ## Historical integration checks
 

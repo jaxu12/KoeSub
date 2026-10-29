@@ -66,11 +66,14 @@ Dependencies, models, and media retain their own licenses. See [THIRD_PARTY.md](
 .\.venv\Scripts\python.exe -m pytest -q
 ```
 
-The current suite contains **261 passing tests**, also verified on a clean source-only copy without developer data or models. It covers editing, persistence, manual-change protection, ASR comparison, third-model routing, grouped output ownership and failure isolation, context-choice validation, evaluation-only oracle selection, stage ordering, exports, and resume behavior. Unit tests do not require model weights or a GPU. Hardware verification scripts in `tools/` require separately prepared runtimes, models, and media.
+The current suite contains **272 passing tests**, also verified on a clean source-only copy without developer data or models. It covers editing, persistence, manual-change protection, ASR comparison, third-model routing, grouped output ownership and failure isolation, context-choice validation, evaluation-only oracle selection, stage ordering, exports, and resume behavior. Unit tests do not require model weights or a GPU. Hardware verification scripts in `tools/` require separately prepared runtimes, models, and media.
+
+The latest frozen 17-case CUDA check found no text improvement on ten new read-speech clips or four paired noise variants, and a small reference-distance regression in an additional meeting interval. It also exposed no-speech completion and whitespace round-trip issues. See the report for coverage and limits; successful execution alone is not transcription-quality evidence.
 
 Recorded experiments and their limitations:
 
 - [Adaptive audio, final alignment, exposure safeguards and CUDA verification](ADAPTIVE_AUDIO_AND_ALIGNMENT.md)
+- [Frozen 17-case production benchmark, regressions and next priorities](CURRENT_PIPELINE_BENCHMARK.md)
 
 - [Source-quality measurement and audio reference audit workflow](SOURCE_QUALITY_EVALUATION.md)
 
