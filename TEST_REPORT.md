@@ -2,7 +2,7 @@
 
 ## Current source-only verification
 
-As of 2026-11-02, **325 tests pass on a clean source-only copy**, without developer data, models or recordings, using the installed development dependencies (verified separately from GPU inference). The test temporary directory is `.pytest-tmp`, which is ignored by Git. A former `data/test-tmp` setting failed on a fresh checkout with no `data` directory and was corrected.
+As of 2026-11-03, **329 tests pass on a clean source-only copy**, without developer data, models or recordings, using the installed development dependencies (verified separately from GPU inference). The test temporary directory is `.pytest-tmp`, which is ignored by Git. A former `data/test-tmp` setting failed on a fresh checkout with no `data` directory and was corrected.
 
 The suite covers editing/undo, persistence, provenance, format round trips, time/readability checks, strict model-response validation, manual translation protection, source phrase comparison, stage ordering before EN, pause/resume, run locks, timeouts, owned child processes, caches, and Qt behavior. Unit tests do not require model weights or a GPU.
 
@@ -25,6 +25,8 @@ The long-test diagnostics add three tests for immutable timing/repetition checks
 Automatic timing review adds twenty-one cases covering deferred raw timing validation, reading exposure, speaker/manual protection, bounded exact-text native retries, outside-context preservation, replay/checkpoint integrity, Unicode mapping, budgets and fatal device errors. The final suite passed 302 tests in 15.25 seconds and a clean copy in 17.24 seconds. The real cached long-run result now reaches audited export without another long decode; a separate synthetic timing defect on real audio triggered a fresh bounded CUDA retry. See [AUTOMATIC_TIMING_REVIEW.md](AUTOMATIC_TIMING_REVIEW.md).
 
 ## Historical integration checks
+
+Full-film mode adds four cases for the complete source-only plan, budgets/persisted controls, CUDA restrictions and native-preset compatibility. The required suite passes 329 tests in 19.00 seconds; a clean copy passes in 19.57 seconds. Separately, the fresh 122.29-minute full Japanese pipeline completes all eleven stages in 1,675.062 seconds, with an audited 647-caption SRT, no invalid times/overlaps, one adaptive text change and 115 retimings. Auxiliary full-scan alignment is rejected and 602 captions retain warnings. Exact distance changes from 5,006 to 5,005 / 6,306 reference characters. This verifies integration and reference disagreement, not independent accuracy. See [FULL_JP_LOOP.md](FULL_JP_LOOP.md).
 
 Timing-review continuation adds fifteen regression cases. The suite passes 325 tests in 16.78 seconds and a clean copy in 18.34 seconds. Separately, recovery of the cached 122.29-minute ASR reaches audited export in 4.531 seconds of new work, with five repairs, one flagged estimated display interval and no new native inference. Source text, original failed-run evidence and the main project pointer remain unchanged. Final cues have no invalid times or overlaps, while 297 captions retain review warnings. The unchanged 57.66% disagreement from the unverified Subtitle Edit sidecar is not a new recognition-quality result. See [AUTOMATIC_TIMING_REVIEW.md](AUTOMATIC_TIMING_REVIEW.md#recovered-full-film-result).
 

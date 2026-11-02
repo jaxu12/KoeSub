@@ -119,12 +119,17 @@ def render_comparison_report(summary,comparison):
         'Neither system is assumed correct. Reference labels were excluded from inference.','',
         f"Film duration: **{summary['media_seconds']/60:.2f} minutes**. "
         f"Fresh pipeline wall time: **{summary['wall_seconds']:.3f} seconds**. "
-        f"Pipeline status: **{summary['status']}**.",'',
-        '| Track | Captions | Character edits / reference characters | Normalized CER | Invalid times | Overlaps | Fast reading |',
-        '|---|---:|---:|---:|---:|---:|---:|']
+        f"Pipeline status: **{summary['status']}**.",'']
+    if summary.get('scope'):lines.extend([summary['scope'],''])
     if summary.get('error'):
-        lines[6:6]=['',f"Pipeline error: **{summary['error']['type']}** — {summary['error']['message']}",
-            'Final export did not complete. The table scores retained completed ASR artifacts.','']
+        lines.extend([f"Pipeline error: **{summary['error']['type']}** — {summary['error']['message']}",
+            'Final export did not complete. The table scores retained completed ASR artifacts.',''])
+    if summary.get('asr_failures'):
+        lines.extend(['Rejected auxiliary ASR (pipeline continued):',''])
+        lines.extend(f"- {item['name']}: {item['reason']}" for item in summary['asr_failures'])
+        lines.append('')
+    lines.extend(['| Track | Captions | Character edits / reference characters | Normalized CER | Invalid times | Overlaps | Fast reading |',
+        '|---|---:|---:|---:|---:|---:|---:|'])
     ref=comparison['reference_technical']
     lines.append(f"| Subtitle Edit reference | {ref['cues']} | — | — | {len(ref['invalid_time_indices'])} | {len(ref['overlap_indices'])} | {ref['fast_reading']} |")
     for name,value in comparison['variants'].items():
@@ -138,7 +143,7 @@ def render_comparison_report(summary,comparison):
     for stage in summary['stages']:lines.append(f"| {stage['id']} | {stage.get('seconds',0):.2f} | {stage['status']} |")
     lines+=['',f"Whole-GPU peak memory: **{summary['gpu_peak_mib']} MiB**, including desktop/other processes. "
         f"Owned engine PID observed by NVIDIA telemetry: **{summary['engine_pid_observed_on_nvidia']}**. "
-        f"Peak engine RAM: **{summary['engine_peak_ram_mib']} MiB**; minimum available system RAM: **{summary['minimum_available_ram_mib']} MiB**.",'',
+        f"Peak baseline-engine RAM: **{summary['engine_peak_ram_mib']} MiB**; minimum available system RAM: **{summary['minimum_available_ram_mib']} MiB**.",'',
         f"Exact export audit: **{summary.get('exact_export_audit','not completed')}**. "
         f"Whole-pipeline replay unchanged: **{summary.get('resume_unchanged','not completed')}**. "
         f"Completed ASR checkpoints reused without work: **{summary.get('completed_asr_checkpoint_replay','not checked')}**. "
@@ -202,8 +207,16 @@ def save_project(root,state,reference):
         if 'track' in value:
             track=track_from(value['track']);project.add_track(track);stages[stage['id']]=track.id
     if state.get('final_track'):project.active_track=state['final_track']
-    project.pipeline_prefs={'transcription_only':True,'asr':config['asr'],'asr_count':1,'retry_clips':False,'jp_context_review':False,
-        'adaptive_audio':False,'align_audio':False,'start':0,'length':0}
+    retry=config.get('retry_asr',{})
+    project.pipeline_prefs={'transcription_only':True,'asr':config['asr'],'asr_count':1,
+        'retry_clips':retry.get('enabled',False),'jp_context_review':config.get('jp_context_review',False),
+        'adaptive_audio':config.get('adaptive_retry',{}).get('enabled',False),
+        'align_audio':config.get('jp_alignment',{}).get('enabled',False),'start':0,'length':0,
+        'scan_first':retry.get('scan_first',False),'batch_retries':retry.get('batch_retries',False),
+        'retry_limit':retry.get('max_targets',12),'third_limit':retry.get('third_max_targets',6),
+        'retry_aux_model':(retry.get('auxiliary') or {}).get('model'),
+        'retry_third_model':(retry.get('third') or {}).get('model'),
+        'judge_model':config.get('judge_model',''),'backend':config.get('backend','embedded')}
     project.jobs=[{'type':'pipeline','id':state['id'],'created':now(),'manifest':str(root/'run/manifest.json'),
         'status':state['status'],'stage_tracks':stages,'track_hashes':{}}]
     pointer=root/'ui/last_project.json'
@@ -238,22 +251,38 @@ def compare_results(root):
     return summary
 
 
-def verify(media,reference,root):
-    root.mkdir(parents=True,exist_ok=True);settings=Settings.load();model=settings.use_subtitle_edit_whisper()
-    settings.cache_dir=str(root/'cache')
-    probe=subprocess.run([settings.ffmpeg,'-hide_banner','-i',str(media)],capture_output=True,encoding='utf8',errors='replace',timeout=60)
-    duration,streams=audio_metadata(probe.stderr)
-    if duration<=1800000:raise ValueError('This test requires a film longer than thirty minutes')
-    check_space(root,duration*177+2*1024**3,settings.reserve_gib)
-    config={'media':str(media.resolve()),'media_duration':duration,'start':0,'duration':duration,'audio_track':0,
+def film_config(media,duration,settings,root,full_jp=False):
+    """Select the existing frozen full-JP policy or native Subtitle Edit preset."""
+    if full_jp:
+        from tools.benchmark_current_pipeline import production_config
+        if settings.crisp_gpu_backend!='cuda' or settings.llm_device!='cuda':
+            raise ValueError('Full Japanese film trial requires CUDA for ASR and the local review model')
+        sample={'id':'full-local-film','audio':str(media.resolve()),'audio_sha256':audio_digest(media),'source_range_ms':[0,duration]}
+        config=production_config(sample,settings,root/'exports')
+        config.pop('benchmark_audio_sha256',None)  # The source is a movie; its hash is frozen in protocol.json.
+        config.update(asr_timing_review={'enabled':True,'max_targets':8,'display_fallback':True},
+            decision_batch_size=4,film_context=False,xxl_device='cuda',xxl_compute='float16')
+        return config
+    model=settings.use_subtitle_edit_whisper()
+    return {'media':str(media.resolve()),'media_duration':duration,'start':0,'duration':duration,'audio_track':0,
         'asr':[{'engine':0,'name':model.name,'model':str(model),'kind':'Whisper / CTranslate2','vad':True}],
         'translations':[],'transcription_only':True,'source_review_version':None,'retry_asr':{'enabled':False},'adaptive_retry':{'enabled':False},
         'asr_timing_review':{'enabled':True,'max_targets':8},'jp_alignment':{'enabled':False},'backend':'embedded','judge_model':'',
         'review':'rules','review_settings':{},'settings':asdict(settings),'xxl_device':'cuda','xxl_compute':'float16',
         'readability_repair':True,'export_srt':True,'export_format':'srt','output_dir':str(root/'exports')}
+
+
+def verify(media,reference,root,full_jp=False):
+    root.mkdir(parents=True,exist_ok=True);settings=Settings.load();settings.cache_dir=str(root/'cache')
+    probe=subprocess.run([settings.ffmpeg,'-hide_banner','-i',str(media)],capture_output=True,encoding='utf8',errors='replace',timeout=60)
+    duration,streams=audio_metadata(probe.stderr)
+    if duration<=1800000:raise ValueError('This test requires a film longer than thirty minutes')
+    check_space(root,duration*177+2*1024**3,settings.reserve_gib)
+    config=film_config(media,duration,settings,root,full_jp)
     policy={'production':{str(p):audio_digest(p) for p in sorted(Path('studio').glob('*.py'))},'media':str(media.resolve()),
         'media_sha256':audio_digest(media),'reference':str(reference.resolve()),'reference_sha256':audio_digest(reference),
-        'duration_ms':duration,'audio_streams':streams,'reference_used_for_inference':False}
+        'duration_ms':duration,'audio_streams':streams,'reference_used_for_inference':False,
+        'mode':'full-jp' if full_jp else 'native-xxl'}
     receipt=root/'protocol.json'
     if receipt.exists() and read_json(receipt)!=policy:raise ValueError('Changed frozen film-comparison inputs or policy')
     write_json(receipt,policy);manifest=root/'run/manifest.json'
@@ -272,8 +301,14 @@ def verify(media,reference,root):
         'engine_peak_ram_mib':max((s.get('engine_peak_ram_mib',0) for s in live.samples),default=None),
         'minimum_available_ram_mib':min((s['available_ram_mib'] for s in live.samples if 'available_ram_mib' in s),default=None),
         'resource_abort':guard.abort,'main_project_unchanged':(pointer.read_bytes() if pointer.exists() else None)==before,
+        'asr_failures':state.get('asr_failures',[]),
         'scope':'Fresh full-film native pipeline; comparison labels used after completion; not independently audited audio accuracy'}
     write_json(root/'run-summary.json',summary)
+    if full_jp:
+        from tools.benchmark_current_pipeline import gpu_evidence
+        summary['gpu_stage_evidence']=gpu_evidence(manifest.parent,gpu)
+        summary['scope']='Fresh full-film Japanese production pipeline: auxiliary scan, retries, source/context review, adaptive audio and alignment; no translation or independently audited accuracy'
+        write_json(root/'run-summary.json',summary)
     if error:
         summary['source_files_unchanged']=audio_digest(media)==policy['media_sha256'] and audio_digest(reference)==policy['reference_sha256']
         write_json(root/'run-summary.json',summary)
@@ -299,7 +334,8 @@ def main():
     sys.stdout.reconfigure(encoding='utf8',errors='replace')
     parser=argparse.ArgumentParser(description=__doc__);parser.add_argument('--media',type=Path,required=True)
     parser.add_argument('--reference',type=Path,required=True);parser.add_argument('--output',type=Path,required=True)
-    args=parser.parse_args();verify(args.media,args.reference,args.output)
+    parser.add_argument('--full-jp',action='store_true',help='Full Japanese pipeline with auxiliary scan, third ASR, context review, adaptive audio and alignment; no translation')
+    args=parser.parse_args();verify(args.media,args.reference,args.output,args.full_jp)
 
 
 if __name__=='__main__':main()

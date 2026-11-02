@@ -1,5 +1,7 @@
 # Full-film Subtitle Edit comparison — 2026-11-02
 
+The subsequent [fresh complete Japanese pipeline test](FULL_JP_LOOP.md) exercises all eleven stages and reaches audited export in 27 min 55 s. It uses the separate GGML/CrispASR full preset, records degraded auxiliary work and only a one-character text change; it is not a rerun of this native MDX preset.
+
 **Follow-up:** the [updated timing review](AUTOMATIC_TIMING_REVIEW.md#recovered-full-film-result) recovers this saved result to an audited **833-caption final SRT, with no invalid times or overlaps**, in **4.531 seconds of new work**. It reuses the full-film ASR and short retry receipts; one display interval is explicitly estimated. The original failed experiment documented below remains unchanged.
 
 **Full-film ASR completed on CUDA, but automatic timing review failed and blocked final export.** The retained raw transcript was compared with the existing Subtitle Edit sidecar. This is a recorded failure of the complete native-preset pipeline, not a successful final-subtitle export.

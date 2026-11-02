@@ -6,12 +6,15 @@ import pytest
 
 from studio.core import Track,Segment
 from studio.evaluation_text import score_text
-from tools.compare_local_film import exact_distance,text_score,matched_timing,comparison_examples,render_comparison_report,window_comparisons,compare_results
+from tools.compare_local_film import exact_distance,text_score,matched_timing,comparison_examples,render_comparison_report,window_comparisons,compare_results,film_config,save_project
 from tools.verify_long_whisper import transcript_diagnostics
 from studio.audio_boundaries import audio_digest
 from studio.pipeline import create_run,digest
 from studio.pipeline_worker import read_json,write_json
 from tests.test_pipeline import config
+from studio.storage import Settings
+from studio.pipeline import plan,validate_config
+from studio.core import ProjectStore
 
 
 def test_bit_vector_distance_matches_exact_dp_exhaustively_and_handles_empty_input():
@@ -71,6 +74,10 @@ def test_comparison_report_distinguishes_agreement_coverage_and_incomplete_check
     report=render_comparison_report(summary,comparison)
     assert 'Final export did not complete' in report and 'Unsupported timing repair' in report
     assert '| Fast reading |\n|---|' in report
+    summary.update(status='needs_review',error=None,asr_failures=[{'name':'Kotoba','reason':'Alignment collapse'}])
+    report=render_comparison_report(summary,comparison)
+    assert 'Rejected auxiliary ASR (pipeline continued)' in report and 'Kotoba: Alignment collapse' in report
+    assert 'Final export did not complete' not in report
 
 
 def test_limited_listening_locations_cover_beginning_middle_and_end():
@@ -116,3 +123,39 @@ def test_failed_review_still_compares_completed_asr_without_rewriting_evidence(c
     assert result['window_comparison']['windows'][0]['cer']==0
     assert Path(read_json(tmp_path/'ui/last_project.json')['path']).is_file()
     assert frozen=={p:audio_digest(p) for p in frozen}
+
+
+def test_full_film_mode_uses_complete_existing_japanese_policy_and_restores_controls(tmp_path,monkeypatch):
+    media=tmp_path/'movie.mp4';media.write_bytes(b'synthetic media identity')
+    settings=Settings(crisp_gpu_backend='cuda',llm_device='cuda',llm_model='local-review.gguf')
+    def forbidden(*args):raise AssertionError('Full JP must not select the standalone native preset')
+    monkeypatch.setattr(Settings,'use_subtitle_edit_whisper',forbidden)
+    cfg=film_config(media,7200000,settings,tmp_path,True);validate_config(cfg)
+    assert [s['id'] for s in plan(cfg)]==['audio','asr-0','asr-timing-review','asr-scan','asr-retry','jp-review',
+        'jp-context','jp-adaptive','jp-align','jp-layout','jp-export']
+    assert cfg['translations']==[] and cfg['judge_model']=='local-review.gguf'
+    assert cfg['retry_asr']['max_targets']==12 and cfg['retry_asr']['third_max_targets']==6
+    assert cfg['adaptive_retry']['max_targets']==4 and cfg['asr_timing_review']['display_fallback']
+    assert cfg['asr'][0]['engine']==2 and cfg['retry_asr']['third']['engine']==1
+    assert 'benchmark_audio_sha256' not in cfg and 'reference' not in cfg
+    raw=Track('raw',[Segment(100,900,'合成の例')]);path=tmp_path/'raw.json';write_json(path,{'track':asdict(raw)})
+    state={'config':cfg,'stages':[{'id':'asr-0','status':'completed','artifact':str(path)}],
+        'final_track':raw.id,'id':'synthetic','status':'needs_review'}
+    save_project(tmp_path,state,Track('reference',[Segment(100,900,'合成の例')]))
+    prefs=ProjectStore(Path(read_json(tmp_path/'ui/last_project.json')['path'])).load().pipeline_prefs
+    assert prefs['retry_clips'] and prefs['jp_context_review'] and prefs['adaptive_audio'] and prefs['align_audio']
+    assert prefs['retry_third_model']==cfg['retry_asr']['third']['model']
+
+
+@pytest.mark.parametrize('field',['crisp_gpu_backend','llm_device'])
+def test_full_film_mode_rejects_non_cuda_configuration(tmp_path,field):
+    settings=Settings(crisp_gpu_backend='cuda',llm_device='cuda');setattr(settings,field,'cpu')
+    with pytest.raises(ValueError,match='requires CUDA'):film_config(tmp_path/'movie.mp4',7200000,settings,tmp_path,True)
+
+
+def test_native_film_mode_retains_the_existing_profile(tmp_path,monkeypatch):
+    settings=Settings()
+    monkeypatch.setattr(Settings,'use_subtitle_edit_whisper',lambda self:tmp_path/'faster-whisper-large-v3')
+    cfg=film_config(tmp_path/'movie.mp4',7200000,settings,tmp_path)
+    assert [s['id'] for s in plan(cfg)]==['audio','asr-0','asr-timing-review','jp-layout','jp-export']
+    assert cfg['asr'][0]['engine']==0 and not cfg['retry_asr']['enabled']
