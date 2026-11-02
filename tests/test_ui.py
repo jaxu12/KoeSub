@@ -98,6 +98,29 @@ def test_asr_disables_unavailable_backend_and_blocks_before_inference(window, tm
     assert w.runner.process is None
 
 
+def test_subtitle_edit_preset_keeps_native_model_and_disables_crisp_retries(window,tmp_path,monkeypatch):
+    from studio.pipeline import plan
+    w,_=window;root=tmp_path/'se/SpeechToText/Purfview-Faster-Whisper-XXL'
+    model=root/'_models/faster-whisper-large-v3'
+    for p in (root/'faster-whisper-xxl.exe',model/'config.json',model/'model.bin',
+              root/'_xxl_data/faster_whisper/assets/Kim_Vocal_2.onnx'):
+        p.parent.mkdir(parents=True,exist_ok=True);p.write_bytes(b'fixture')
+    w.settings.subtitle_edit=str(tmp_path/'se');w.settings.ffmpeg=sys.executable
+    monkeypatch.setattr(Settings,'load',classmethod(lambda cls:w.settings))
+    monkeypatch.setattr(w,'probe_crisp_backends',lambda:None)
+    w.demo();media=tmp_path/'audio.wav';media.write_bytes(b'audio');w.project.media=str(media);w.project.duration=2000
+    panel=w.pipeline_panel;panel.start.setValue(0);panel.length.setValue(0)
+    panel.apply_preset(6);config=panel.config('native-test')
+    assert panel.preset.currentIndex()==6 and config['asr'][0]['engine']==0
+    assert config['translations']==[] and config['source_review_version'] is None
+    assert not config['retry_asr']['enabled'] and not config['adaptive_retry']['enabled']
+    assert not panel.retry_clips.isEnabled() and not panel.jp_context_review.isEnabled()
+    assert config['settings']['whisper_vocal_extract']=='mdx_kim2'
+    assert [s['id'] for s in plan(config)]==['audio','asr-0','jp-layout','jp-export']
+    w.set_busy(True);assert not w.whisper_vocals.isEnabled()
+    w.set_busy(False);assert w.whisper_vocals.isEnabled()
+
+
 def test_cancel_background_process_keeps_gui_responsive(window, app):
     w, errors = window
     results = []

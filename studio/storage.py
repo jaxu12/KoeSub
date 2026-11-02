@@ -21,6 +21,8 @@ class Settings:
     cache_dir: str = str(DATA / "cache")
     ffmpeg: str = ""
     whisper_exe: str = ""
+    whisper_profile: str = "legacy"
+    whisper_vocal_extract: str = ""
     crisp_exe: str = ""
     crisp_gpu_backend: str = "vulkan"
     crisp_aligner: str = ""
@@ -67,6 +69,19 @@ class Settings:
 
     def save(self):
         atomic_text(DATA / "settings.json", json.dumps(asdict(self), ensure_ascii=False, indent=2))
+
+    def use_subtitle_edit_whisper(self):
+        """Reuse the installed XXL/CT2/MDX files without copying or downloading."""
+        root = Path(self.subtitle_edit)/'SpeechToText/Purfview-Faster-Whisper-XXL'
+        executable = root/'faster-whisper-xxl.exe'
+        model = root/'_models/faster-whisper-large-v3'
+        vocal = root/'_xxl_data/faster_whisper/assets/Kim_Vocal_2.onnx'
+        for path in (executable, model/'model.bin', model/'config.json', vocal):
+            if not path.is_file(): raise ValueError('Missing installed Subtitle Edit Whisper file: '+str(path))
+        self.whisper_exe = str(executable.resolve())
+        self.whisper_profile = 'subtitle-edit'; self.whisper_vocal_extract = 'mdx_kim2'
+        if str(model.parent.resolve()) not in self.model_roots: self.model_roots.append(str(model.parent.resolve()))
+        return model.resolve()
 
 
 @dataclass
@@ -140,9 +155,11 @@ def check_space(path: Path, needed: int, reserve_gib: float = 2.0) -> int:
     return free
 
 
-def audio_cache_path(settings: Settings, media: Path, track: int, start: int = 0, duration: int = 0) -> Path:
+def audio_cache_path(settings: Settings, media: Path, track: int, start: int = 0, duration: int = 0,
+                     profile: str = 'pcm16-16k-v1') -> Path:
     stat = media.stat()
-    key = f"{media.resolve()}|{stat.st_size}|{stat.st_mtime_ns}|{track}|{start}|{duration}|pcm16-16k-v1"
+    if profile not in ('pcm16-16k-v1','vocal-stereo44100-v1'):raise ValueError('Unknown audio cache profile')
+    key = f"{media.resolve()}|{stat.st_size}|{stat.st_mtime_ns}|{track}|{start}|{duration}|{profile}"
     name = hashlib.sha256(key.encode()).hexdigest()[:24]
     return Path(settings.cache_dir) / f"audio-{name}.wav"
 

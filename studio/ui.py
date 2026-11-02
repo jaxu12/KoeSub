@@ -123,6 +123,8 @@ class ProcessRunner(QWidget):
         env = QProcessEnvironment.systemEnvironment()
         for key, value in offline_env().items():
             env.insert(key, value)
+        if self.owner.settings.ffmpeg:
+            env.insert('PATH',str(Path(self.owner.settings.ffmpeg).parent)+os.pathsep+env.value('PATH'))
         if cwd:
             temp_folder = Path(self.owner.settings.cache_dir) / "runtime-temp" / Path(cwd).name
             temp_folder.mkdir(parents=True, exist_ok=True)
@@ -457,6 +459,20 @@ class Window(QMainWindow):
         form.addRow("Lokalny model", self.asr_model)
         form.addRow("Faster Whisper XXL: precyzja", self.compute)
         form.addRow("Faster Whisper XXL: urządzenie", self.device)
+        self.whisper_profile = QComboBox()
+        self.whisper_profile.addItem('KoeSub legacy', 'legacy')
+        self.whisper_profile.addItem('Subtitle Edit native defaults', 'subtitle-edit')
+        self.whisper_profile.setCurrentIndex(max(0,self.whisper_profile.findData(self.settings.whisper_profile)))
+        self.whisper_vocals = QCheckBox('MDX Kim2 vocal extraction (XXL only)')
+        self.whisper_vocals.setChecked(self.settings.whisper_vocal_extract=='mdx_kim2')
+        self.whisper_profile.currentIndexChanged.connect(self.save_whisper_options)
+        self.whisper_vocals.toggled.connect(self.save_whisper_options)
+        form.addRow('Whisper profile',self.whisper_profile)
+        form.addRow('Vocal extraction',self.whisper_vocals)
+        self.subtitle_edit_whisper_button = button('Use installed Subtitle Edit Whisper + MDX',
+            lambda:self.guarded(self.use_subtitle_edit_whisper))
+        self.mutating.append(self.subtitle_edit_whisper_button)
+        form.addRow(self.subtitle_edit_whisper_button)
         form.addRow("Qwen / whisper.cpp: GPU", self.crisp_device)
         self.backend_label = label("Backendy silnika: sprawdzanie…", True)
         form.addRow(self.backend_label)
@@ -470,12 +486,11 @@ class Window(QMainWindow):
         layout.addWidget(label("Na początek ustawiony jest test 60 sekund. Czasy wyniku zostaną przesunięte "
                                "do pozycji w oryginalnym filmie. Pełny film: długość 0. "
                                "Przed ASR zwolnij VRAM zajęty przez modele w LM Studio.", True))
-        layout.addWidget(label("Faster Whisper XXL: standard_asia, beam=5, temperature=0, word timestamps, "
-                               "condition_on_previous_text=False. Crisp: max-len=50, split-on-punct, "
-                               "suppress-nst, frequency-penalty=0.2, lokalny aligner, jeśli dostępny. "
-                               "Whisper.cpp: beam=5, podział przy interpunkcji, limit 32 znaków; "
-                               "ten backend ma własne parametry segmentacji. "
-                               "Dokładne polecenie i zgodność flag są zapisywane w logach.", True))
+        layout.addWidget(label('The Subtitle Edit profile uses native XXL defaults with standard_asia. '
+                               'MDX Kim2 separates vocals before recognition and adds processing time. '
+                               'The legacy profile keeps earlier decoding overrides. XXL uses CTranslate2 models; '
+                               'whisper.cpp uses GGML models and different segmentation. '
+                               'The exact command and supported flags are recorded in the job logs.', True))
         layout.addStretch()
         self.tabs.addTab(page, "Transkrypcja")
 
@@ -840,7 +855,7 @@ class Window(QMainWindow):
         self.cancel_button.setEnabled(value)
         for b in self.mutating:
             b.setEnabled(not value)
-        for widget in (self.track_combo, self.asr_engine, self.asr_model, self.compute, self.device, self.crisp_device,
+        for widget in (self.track_combo, self.asr_engine, self.asr_model, self.compute, self.device, self.crisp_device,self.whisper_profile,self.whisper_vocals,
                        self.vad, self.asr_start, self.asr_length, self.jp_edit, self.en_edit,
                        self.start_edit, self.end_edit, self.compare_a, self.compare_b, self.lm_url,
                        self.prompt, self.llm_combo, self.audio_combo,self.translation_backend,
@@ -1447,6 +1462,22 @@ class Window(QMainWindow):
         self.compute.setEnabled(not self.busy and xxl)
         self.device.setEnabled(not self.busy and xxl)
         self.crisp_device.setEnabled(not self.busy and not xxl)
+        self.whisper_profile.setEnabled(not self.busy and xxl)
+        self.whisper_vocals.setEnabled(not self.busy and xxl)
+
+    def save_whisper_options(self,*_):
+        self.settings.whisper_profile = self.whisper_profile.currentData()
+        self.settings.whisper_vocal_extract = 'mdx_kim2' if self.whisper_vocals.isChecked() else ''
+        self.settings.save()
+
+    def use_subtitle_edit_whisper(self):
+        model = self.settings.use_subtitle_edit_whisper(); self.settings.save(); self.scan_models()
+        self.whisper_profile.setCurrentIndex(self.whisper_profile.findData('subtitle-edit'))
+        self.whisper_vocals.setChecked(True); self.device.setCurrentText('cuda'); self.compute.setCurrentText('float16')
+        self.asr_engine.setCurrentIndex(0); self.update_asr_models()
+        index=next((i for i in range(self.asr_model.count()) if Path(self.models[self.asr_model.itemData(i)].path)==model),-1)
+        if index>=0:self.asr_model.setCurrentIndex(index)
+        return model
 
     def add_model_root(self):
         path = QFileDialog.getExistingDirectory(self, "Wskaż folder istniejących modeli (bez kopiowania)")
@@ -1558,20 +1589,24 @@ class Window(QMainWindow):
             length or max(0, self.project.duration-start)
         if not duration:
             raise ValueError("Nieznana długość materiału. Ustaw długość testu w sekundach.")
-        needed = (duration*32) + 20*1024**2  # PCM16 mono 16 kHz; plus output/headroom.
+        vocal=engine==0 and self.settings.whisper_vocal_extract=='mdx_kim2'
+        needed = (duration*(177 if vocal else 32)) + 20*1024**2
         check_space(Path(self.settings.cache_dir), needed, self.settings.reserve_gib)
         self.save()
         check_space(self.store.path.parent, 20*1024**2, self.settings.reserve_gib)
         self.checkpoint()
         job_dir = self.store.path.parent / "runs" / uid()
         job_dir.mkdir(parents=True)
-        cache = audio_cache_path(self.settings, media, self.project.audio_track, start, length)
+        cache = audio_cache_path(self.settings, media, self.project.audio_track, start, length,
+            'vocal-stereo44100-v1' if vocal else 'pcm16-16k-v1')
         cache.parent.mkdir(parents=True, exist_ok=True)
         self.job = {"id": job_dir.name, "type": "asr", "status": "running", "created": now(),
                     "engine": engine, "model": self.models[index].path, "start": start, "duration": duration,
                     "audio_track": self.project.audio_track, "cache": str(cache), "output": str(job_dir),
                     "executable": executable, "compute": self.compute.currentText(),
                     "device": self.device.currentText(), "vad": self.vad.isChecked(),
+                    "vocal_stereo":vocal,"whisper_profile":self.settings.whisper_profile,
+                    "whisper_vocal_extract":self.settings.whisper_vocal_extract,
                     "crisp_gpu_backend": self.settings.crisp_gpu_backend}
         self.project.jobs.append(self.job)
         self.save(reason="ASR started")
@@ -1620,7 +1655,7 @@ class Window(QMainWindow):
         partial = cache.with_suffix(".partial.wav")
         args = ["-hide_banner", "-nostdin", "-y", "-ss", str(job["start"]/1000), "-i", self.project.media,
                 "-map", f"0:a:{job['audio_track']}", "-vn", "-t", str(job["duration"]/1000),
-                "-ac", "1", "-ar", "16000", "-c:a", "pcm_s16le", str(partial)]
+                "-ac", "2" if job.get('vocal_stereo') else "1", "-ar", "44100" if job.get('vocal_stereo') else "16000", "-c:a", "pcm_s16le", str(partial)]
         self.progress_label.setText("Wyodrębnianie wybranej ścieżki audio…")
         self.runner.start(self.settings.ffmpeg, args, lambda c, o, x: self.audio_ready(c, o, x, partial), cwd=folder,
                           timeout_seconds=max(120,job['duration']/1000))

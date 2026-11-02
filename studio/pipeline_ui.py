@@ -42,8 +42,9 @@ class PipelinePanel(QWidget):
         row = QHBoxLayout()
         self.preset = QComboBox()
         self.preset.addItems(['Zrównoważony • 2 ASR / 2 EN','Szybki • 1 ASR / 1 EN','Dokładny • 2 ASR / 2 EN + pełne AI','Własny',
-                             'Porównawczy • 3 ASR / 2 EN + pełne AI','Transkrypcja JP • Large V3 + wycinki'])
-        self.preset.currentIndexChanged.connect(self.apply_preset)
+                             'Porównawczy • 3 ASR / 2 EN + pełne AI','Transkrypcja JP • Large V3 + wycinki',
+                             'Subtitle Edit Whisper • CUDA FP16 + MDX'])
+        self.preset.currentIndexChanged.connect(lambda index:self.owner.guarded(lambda:self.apply_preset(index)))
         row.addWidget(self.preset,1)
         self.backend = QComboBox()
         self.backend.addItem('Wbudowany GGUF','embedded')
@@ -214,6 +215,7 @@ class PipelinePanel(QWidget):
         self.asr_count.valueChanged.connect(self.show_rows)
         self.en_count.valueChanged.connect(self.show_rows)
         self.asr_count.valueChanged.connect(self.update_preset_label)
+        self.asr_models[0].activated.connect(self.update_scope)
         self.en_count.valueChanged.connect(self.update_preset_label)
         self.review.currentIndexChanged.connect(self.update_preset_label)
         self.review.currentIndexChanged.connect(lambda *_:self.review_action.setEnabled(not self.owner.busy and self.review.currentData()!='rules'))
@@ -234,7 +236,11 @@ class PipelinePanel(QWidget):
             self.asr_count.setValue(1);self.vad[0].setChecked(True)
             choices=self.asr_models[0]
             index=next((i for i in range(choices.count()) if choices.itemData(i)['engine']==2 and 'large-v3' in choices.itemData(i)['model'].lower()),-1)
-            if index>=0: choices.setCurrentIndex(index)
+            current=choices.currentData() or {}
+            if index>=0 and current.get('engine')!=0: choices.setCurrentIndex(index)
+        native=jp and (self.asr_models[0].currentData() or {}).get('engine')==0
+        if native:
+            self.retry_clips.setChecked(False);self.jp_context_review.setChecked(False);self.adaptive_audio.setChecked(False)
         self.autosplit.setEnabled(not jp and not self.owner.busy)
         self.pause.setEnabled(not jp and not self.owner.busy)
         self.vad[0].setEnabled(not jp and not self.owner.busy)
@@ -250,10 +256,13 @@ class PipelinePanel(QWidget):
         for widget in (self.retry_third,self.third_limit,self.batch_retries):widget.setEnabled(jp and self.retry_clips.isChecked() and not self.owner.busy)
         for widget in (self.adaptive_audio,self.adaptive_limit,self.align_audio,self.align_split):widget.setVisible(jp)
         for widget in (self.adaptive_audio,self.adaptive_limit):widget.setEnabled(jp and self.retry_clips.isChecked() and not self.owner.busy)
+        if native:
+            for widget in (self.retry_clips,self.jp_context_review,self.retry_aux,self.retry_context,self.retry_limit,self.scan_first,self.retry_third,self.third_limit,self.batch_retries):widget.setEnabled(False)
         self.align_split.setEnabled(jp and self.align_audio.isChecked() and not self.owner.busy)
         self.update_preset_label()
 
     def preview_plan(self):
+        native=self.transcription_only.isChecked() and (self.asr_models[0].currentData() or {}).get('engine')==0
         config = {'asr':[combo.currentData() or {'name':'wybierz model'} for combo in self.asr_models[:self.asr_count.value()]],
                   'translations':[{'variant':v.currentData()} for v in self.variants[:self.en_count.value()]],
                   'review':self.review.currentData(),'review_action':self.review_action.currentData(),'film_context':self.film_context.isChecked(),
@@ -263,6 +272,7 @@ class PipelinePanel(QWidget):
             'scan_first':self.scan_first.isChecked(),'auxiliary':self.retry_aux.currentData()})
         config.update(adaptive_retry={'enabled':self.transcription_only.isChecked() and self.retry_clips.isChecked() and self.adaptive_audio.isChecked()},
             jp_alignment={'enabled':self.transcription_only.isChecked() and self.align_audio.isChecked()})
+        if native:config.update(source_review_version=None,jp_context_review=False,retry_asr={'enabled':False},adaptive_retry={'enabled':False})
         steps = plan(config)
         self.stages.setRowCount(len(steps))
         for row,stage in enumerate(steps):
@@ -275,9 +285,20 @@ class PipelinePanel(QWidget):
     def apply_preset(self,index):
         if index==3:
             return
+        if index==6:
+            model=self.owner.use_subtitle_edit_whisper()
+            combo=self.asr_models[0]
+            target=next((i for i in range(combo.count()) if combo.itemData(i)['engine']==0 and Path(combo.itemData(i)['model'])==model),-1)
+            if target<0:raise ValueError('Installed Subtitle Edit model was not discovered')
+            combo.setCurrentIndex(target);self.transcription_only.setChecked(True)
+            self.retry_clips.setChecked(False);self.jp_context_review.setChecked(False);self.adaptive_audio.setChecked(False)
+            self.align_audio.setChecked(False);self.film_context.setChecked(False);self.update_scope();self.preview_plan();return
         self.transcription_only.setChecked(index==5)
         if index==5:
             self.asr_count.setValue(1);self.vad[0].setChecked(True)
+            combo=self.asr_models[0]
+            target=next((i for i in range(combo.count()) if combo.itemData(i)['engine']==2 and 'large-v3' in combo.itemData(i)['model'].lower()),-1)
+            if target>=0:combo.setCurrentIndex(target)
             self.film_context.setChecked(False);self.update_scope();return
         self.asr_count.setValue(1 if index==1 else 3 if index==4 else 2)
         self.en_count.setValue(1 if index==1 else 2)
@@ -288,7 +309,8 @@ class PipelinePanel(QWidget):
 
     def update_preset_label(self,*_):
         if self.transcription_only.isChecked():
-            self.preset.blockSignals(True);self.preset.setCurrentIndex(5);self.preset.blockSignals(False);return
+            native=(self.asr_models[0].currentData() or {}).get('engine')==0
+            self.preset.blockSignals(True);self.preset.setCurrentIndex(6 if native else 5);self.preset.blockSignals(False);return
         key = (self.asr_count.value(),self.en_count.value(),self.review.currentData())
         index = {(2,2,'balanced'):0,(1,1,'rules'):1,(2,2,'deep'):2,(3,2,'deep'):4}.get(key,3)
         self.preset.blockSignals(True)
@@ -470,6 +492,9 @@ class PipelinePanel(QWidget):
                            'scan_first':self.scan_first.isChecked(),'batch_retries':self.batch_retries.isChecked(),
                            'third':{**self.retry_third.currentData(),'vad':True} if self.retry_third.currentData() else None,
                            'third_max_targets':self.third_limit.value()})
+            if asr[0]['engine']==0:
+                config.update(source_review_version=None,jp_context_review=False,judge_model='',llm_keep_loaded=False,
+                    retry_asr={'enabled':False},adaptive_retry={'enabled':False})
         validate_config(config)
         if config['backend']=='embedded' and (not jp_only or config.get('jp_context_review')):
             from .embedded_llm import model_identity
@@ -488,7 +513,8 @@ class PipelinePanel(QWidget):
                 raise ValueError('Najpierw zaimportuj film lub audio.')
             run_id = uid()
             config = self.config(run_id)
-            check_space(Path(owner.settings.cache_dir),config['duration']*32+20*1024**2,owner.settings.reserve_gib)
+            vocal=any(i['engine']==0 for i in config['asr']) and owner.settings.whisper_vocal_extract=='mdx_kim2'
+            check_space(Path(owner.settings.cache_dir),config['duration']*(177 if vocal else 32)+20*1024**2,owner.settings.reserve_gib)
             folder = Path(owner.settings.cache_dir)/'pipeline'/run_id
             state = create_run(config,folder)
             owner.checkpoint()

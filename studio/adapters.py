@@ -38,12 +38,26 @@ def whisper_command(settings: Settings, model: Model, audio: Path, output: Path,
         raise ValueError("To wydanie XXL wymaga folderu o nazwie faster-whisper-NAZWA. "
                          "Wybierz model z folderu _models Subtitle Edit. Aplikacja nie zmienia ani nie kopiuje modeli.")
     model_name = folder.name.removeprefix("faster-whisper-")
-    args = [str(audio.resolve()), "--model", model_name, "--model_dir", str(folder.parent),
-            "--output_dir", str(output.resolve()), "--language", "ja", "--task", "transcribe",
-            "--device", device, "--compute_type", compute, "--beam_size", "5", "--best_of", "5",
-            "--temperature", "0", "--condition_on_previous_text", "False", "--initial_prompt", "None",
-            "--vad_filter", str(vad), "--word_timestamps", "True", "--standard_asia", "--beep_off",
-            "--output_format", "srt", "json"]
+    if settings.whisper_profile not in ('legacy', 'subtitle-edit'):
+        raise ValueError('Unknown Faster-Whisper profile')
+    if settings.whisper_vocal_extract not in ('', 'mdx_kim2'):
+        raise ValueError('Unsupported local vocal extraction model')
+    if settings.whisper_profile == 'subtitle-edit':
+        args = [str(audio.resolve()), '--model', model_name, '--model_dir', str(folder.parent),
+                '--output_dir', str(output.resolve()), '--language', 'ja', '--task', 'transcribe',
+                '--device', device, '--compute_type', compute, '--standard_asia', '--vad_filter', str(vad),
+                '--beep_off', '--output_format', 'srt', 'json']
+    else:
+        args = [str(audio.resolve()), "--model", model_name, "--model_dir", str(folder.parent),
+                "--output_dir", str(output.resolve()), "--language", "ja", "--task", "transcribe",
+                "--device", device, "--compute_type", compute, "--beam_size", "5", "--best_of", "5",
+                "--temperature", "0", "--condition_on_previous_text", "False", "--initial_prompt", "None",
+                "--vad_filter", str(vad), "--word_timestamps", "True", "--standard_asia", "--beep_off",
+                "--output_format", "srt", "json"]
+    if settings.whisper_vocal_extract:
+        vocal = Path(settings.whisper_exe).parent/'_xxl_data/faster_whisper/assets/Kim_Vocal_2.onnx'
+        if not vocal.is_file(): raise ValueError('Local Kim_Vocal_2.onnx is missing; automatic download is disabled')
+        args += ['--ff_vocal_extract', settings.whisper_vocal_extract, '--voc_device', device]
     validate_flags(help_text, args)
     return args
 

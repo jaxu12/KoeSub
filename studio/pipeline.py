@@ -50,6 +50,7 @@ def source_surface_conflicts(japanese,english):
 def plan(config):
     if config.get('transcription_only'):
         stages=[('audio','Przygotowanie audio'),('asr-0','Baza JP • Large V3 + VAD')]
+        if config['asr'][0].get('engine')==0:stages[1]=('asr-0','JP baseline • Faster-Whisper XXL • VAD')
         if config.get('retry_asr',{}).get('enabled'):
             if config['retry_asr'].get('scan_first') and config['retry_asr'].get('auxiliary'):
                 stages.append(('asr-scan','Auxiliary ASR scan • detect disagreements'))
@@ -91,8 +92,11 @@ def validate_config(config):
         raise ValueError('Nieobsługiwana wersja review oryginału JP.')
     jp_only=config.get('transcription_only',False)
     if jp_only:
-        if len(config['asr'])!=1 or config['asr'][0]['engine']!=2 or 'kotoba' in config['asr'][0]['model'].lower() or not config['asr'][0]['vad']:
+        engine=config['asr'][0]['engine'] if len(config['asr'])==1 else None
+        if len(config['asr'])!=1 or engine not in (0,2) or 'kotoba' in config['asr'][0]['model'].lower() or not config['asr'][0]['vad']:
             raise ValueError('Tryb JP wymaga jednej bazy Whisper Large V3 GGML z VAD.')
+        if engine==0 and config.get('retry_asr',{}).get('enabled'):
+            raise ValueError('Faster-Whisper XXL uses its native source-only preset; CrispASR retries require a GGML baseline')
         if config['translations']: raise ValueError('Tryb JP nie uruchamia tłumaczenia.')
         options=config.get('retry_asr',{})
         if type(options.get('scan_first',False)) is not bool: raise ValueError('Invalid auxiliary scan option')
@@ -160,13 +164,20 @@ def asset_identities(config):
     settings = config['settings']
     paths = [config['media'],settings['ffmpeg']]
     for item in config['asr']:
-        paths += [item['model'],settings['whisper_exe'] if item['engine']==0 else settings['crisp_exe']]
+        if item['engine']==0:
+            folder=Path(item['model'])
+            paths += [str(folder/name) for name in ('model.bin','config.json')]
+            paths += [str(folder/name) for name in ('tokenizer.json','vocabulary.json','preprocessor_config.json') if (folder/name).is_file()]
+            paths.append(settings['whisper_exe'])
+            if settings.get('whisper_vocal_extract'):
+                paths.append(str(Path(settings['whisper_exe']).parent/'_xxl_data/faster_whisper/assets/Kim_Vocal_2.onnx'))
+        else:paths += [item['model'],settings['crisp_exe']]
         if item['engine'] in (1,2,3) and item['vad']:
             paths.append(settings['crisp_vad'])
         if (item['engine']==1 or config.get('source_guard') and any(tag in Path(item['model']).name.lower() for tag in ('kotoba','anime-whisper'))) and settings['crisp_aligner']:
             paths.append(settings['crisp_aligner'])
     if config.get('transcription_only'):
-        if config.get('jp_alignment',{}).get('enabled'):paths.append(settings['crisp_aligner'])
+        if config.get('jp_alignment',{}).get('enabled'):paths += [settings['crisp_aligner'],settings['crisp_exe']]
         auxiliary=config.get('retry_asr',{}).get('auxiliary')
         if config.get('retry_asr',{}).get('enabled'):
             for item in (auxiliary,config.get('retry_asr',{}).get('third')):

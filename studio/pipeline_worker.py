@@ -140,6 +140,7 @@ class PipelineRunner:
         temp = Path(self.settings.cache_dir)/'runtime-temp'/self.folder.name
         temp.mkdir(parents=True,exist_ok=True)
         env = {**os.environ,**offline_env(),'TEMP':str(temp),'TMP':str(temp)}
+        if self.settings.ffmpeg:env['PATH']=str(Path(self.settings.ffmpeg).parent)+os.pathsep+env.get('PATH','')
         write_json(folder/(name+'-command.json'),args)
         with log.open('wb') as output:
             child = subprocess.Popen(args,stdin=subprocess.DEVNULL,stdout=output,stderr=subprocess.STDOUT,
@@ -244,13 +245,15 @@ class PipelineRunner:
 
     def audio(self,folder):
         c = self.config
-        audio = audio_cache_path(self.settings,Path(c['media']),c['audio_track'],c['start'],c['duration'])
+        vocal=any(i['engine']==0 for i in c['asr']) and self.settings.whisper_vocal_extract=='mdx_kim2'
+        profile='vocal-stereo44100-v1' if vocal else 'pcm16-16k-v1'
+        audio = audio_cache_path(self.settings,Path(c['media']),c['audio_track'],c['start'],c['duration'],profile)
         audio.parent.mkdir(parents=True,exist_ok=True)
         if not audio.exists() or audio.stat().st_size<=44:
-            check_space(audio,c['duration']*32+20*1024**2,self.settings.reserve_gib)
+            check_space(audio,c['duration']*(177 if vocal else 32)+20*1024**2,self.settings.reserve_gib)
             partial = audio.with_suffix('.partial.wav')
             args = [self.settings.ffmpeg,'-hide_banner','-nostdin','-y','-ss',str(c['start']/1000),'-i',c['media'],
-                    '-map',f'0:a:{c["audio_track"]}','-vn','-t',str(c['duration']/1000),'-ac','1','-ar','16000','-c:a','pcm_s16le',str(partial)]
+                    '-map',f'0:a:{c["audio_track"]}','-vn','-t',str(c['duration']/1000),'-ac','2' if vocal else '1','-ar','44100' if vocal else '16000','-c:a','pcm_s16le',str(partial)]
             self.call(args,folder,'ffmpeg',max(120,c['duration']/1000))
             if not partial.is_file() or partial.stat().st_size<=44:
                 raise ValueError('FFmpeg nie zapisał audio.')

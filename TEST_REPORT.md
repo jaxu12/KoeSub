@@ -2,7 +2,7 @@
 
 ## Current source-only verification
 
-As of 2026-10-29, **272 tests pass on a clean source-only copy**, without developer data, models or recordings, using the installed development dependencies (verified separately from GPU inference). The test temporary directory is `.pytest-tmp`, which is ignored by Git. A former `data/test-tmp` setting failed on a fresh checkout with no `data` directory and was corrected.
+As of 2026-11-02, **278 tests pass on a clean source-only copy**, without developer data, models or recordings, using the installed development dependencies (verified separately from GPU inference). The test temporary directory is `.pytest-tmp`, which is ignored by Git. A former `data/test-tmp` setting failed on a fresh checkout with no `data` directory and was corrected.
 
 The suite covers editing/undo, persistence, provenance, format round trips, time/readability checks, strict model-response validation, manual translation protection, source phrase comparison, stage ordering before EN, pause/resume, run locks, timeouts, owned child processes, caches, and Qt behavior. Unit tests do not require model weights or a GPU.
 
@@ -17,6 +17,8 @@ The source-quality evaluation suite covers unverified references, missing output
 Adaptive-audio and alignment coverage includes quiet-boundary planning, distinct-context/model requirements, VAD profile limits, audio/crop hashes and receipt replay, bounded alignment blocks, punctuation/manual protection, zero-duration coalescing without interpolation, exact text preservation, global overlap avoidance, reading exposure, audio-based splitting, LLM release and fatal device errors. Hardware and cached-reference results are separated in [ADAPTIVE_AUDIO_AND_ALIGNMENT.md](ADAPTIVE_AUDIO_AND_ALIGNMENT.md).
 
 Eleven benchmark tests cover deterministic noise/SNR/clipping, label exclusion from production inputs, ASR-buffer versus owned-PID GPU proof, unique full-cue timing matches, whitespace-only round trips, weighted CER and missing coverage, no-speech diagnostics and frozen-collection integrity. The full suite passed in 15.75 seconds and a clean copy in 18.15 seconds. Separately, the frozen 17-case CUDA check exposed a one-edit meeting regression, unchanged short-clip CER, two failed no-speech outcomes and one whitespace-only export mismatch. See [CURRENT_PIPELINE_BENCHMARK.md](CURRENT_PIPELINE_BENCHMARK.md); those findings are not counted as passing quality tests.
+
+Native Subtitle Edit Whisper coverage adds six tests for reuse without copies, native flags/defaults, local MDX prerequisites, CT2/vocal-asset receipts, stereo cache identity, source-only execution/resume and UI restrictions. The full suite passed 278 tests in 28.67 seconds; a clean copy passed in 22.40 seconds. Twelve bounded native comparisons and a separate production ASR/export check are documented in [SUBTITLE_EDIT_WHISPER.md](SUBTITLE_EDIT_WHISPER.md). Export resumed after a test-console encoding failure, preserving original native timing/GPU evidence. No full-movie or private-excerpt accuracy claim is made.
 
 ## Historical integration checks
 

@@ -10,6 +10,7 @@ The current priority is Japanese transcription. English translation is optional.
 
 - Video playback, waveform navigation, cue playback, editing, undo/redo, and SQLite projects.
 - Local Whisper Large V3 inference through whisper.cpp/CrispASR, VAD, and an explicit GPU backend.
+- A separate **Subtitle Edit Whisper • CUDA FP16 + MDX** source-only preset reuses installed Faster-Whisper-XXL, CTranslate2 weights and Kim2 vocal extraction. It supports native defaults and stereo preprocessing while skipping CrispASR-specific retry/review stages.
 - A one-click Japanese pipeline: **audio → baseline ASR → optional auxiliary scan → grouped retries → third ASR for unresolved windows → phrase review → optional JP scene review → adaptive contexts → final audio alignment → layout → subtitles and report**.
 - Bounded third-model work, normally Qwen3-ASR JA Anime/Galgame. A third decoder can corroborate a baseline retry; two auxiliaries cannot outvote it. Timing, phrase boundaries, confidence and manual-edit guards still apply.
 - Several retry clips can share one native process per model. Models run sequentially; per-clip logs, confidence, native output and resume receipts are retained.
@@ -66,7 +67,7 @@ Dependencies, models, and media retain their own licenses. See [THIRD_PARTY.md](
 .\.venv\Scripts\python.exe -m pytest -q
 ```
 
-The current suite contains **272 passing tests**, also verified on a clean source-only copy without developer data or models. It covers editing, persistence, manual-change protection, ASR comparison, third-model routing, grouped output ownership and failure isolation, context-choice validation, evaluation-only oracle selection, stage ordering, exports, and resume behavior. Unit tests do not require model weights or a GPU. Hardware verification scripts in `tools/` require separately prepared runtimes, models, and media.
+The current suite contains **278 passing tests**, also verified on a clean source-only copy without developer data or models. It covers editing, persistence, manual-change protection, ASR comparison, third-model routing, grouped output ownership and failure isolation, context-choice validation, evaluation-only oracle selection, stage ordering, exports, and resume behavior. Unit tests do not require model weights or a GPU. Hardware verification scripts in `tools/` require separately prepared runtimes, models, and media.
 
 The latest frozen 17-case CUDA check found no text improvement on ten new read-speech clips or four paired noise variants, and a small reference-distance regression in an additional meeting interval. It also exposed no-speech completion and whitespace round-trip issues. See the report for coverage and limits; successful execution alone is not transcription-quality evidence.
 
@@ -74,6 +75,7 @@ Recorded experiments and their limitations:
 
 - [Adaptive audio, final alignment, exposure safeguards and CUDA verification](ADAPTIVE_AUDIO_AND_ALIGNMENT.md)
 - [Frozen 17-case production benchmark, regressions and next priorities](CURRENT_PIPELINE_BENCHMARK.md)
+- [Subtitle Edit XXL/MDX profile, comparisons and native verification](SUBTITLE_EDIT_WHISPER.md)
 
 - [Source-quality measurement and audio reference audit workflow](SOURCE_QUALITY_EVALUATION.md)
 
