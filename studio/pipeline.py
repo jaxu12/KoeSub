@@ -95,6 +95,7 @@ def validate_config(config):
     jp_only=config.get('transcription_only',False)
     timing=config.get('asr_timing_review',{})
     if not isinstance(timing,dict) or type(timing.get('enabled',False)) is not bool:raise ValueError('Invalid ASR timing review option')
+    if 'display_fallback' in timing and type(timing['display_fallback']) is not bool:raise ValueError('Invalid display timing fallback option')
     if timing.get('enabled'):
         if not jp_only:raise ValueError('Automatic ASR timing review requires source-only mode')
         if type(timing.get('max_targets',8)) is not int or not 1<=timing.get('max_targets',8)<=30:raise ValueError('Invalid timing repair budget')

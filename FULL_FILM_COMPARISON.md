@@ -1,5 +1,7 @@
 # Full-film Subtitle Edit comparison — 2026-11-02
 
+**Follow-up:** the [updated timing review](AUTOMATIC_TIMING_REVIEW.md#recovered-full-film-result) recovers this saved result to an audited **833-caption final SRT, with no invalid times or overlaps**, in **4.531 seconds of new work**. It reuses the full-film ASR and short retry receipts; one display interval is explicitly estimated. The original failed experiment documented below remains unchanged.
+
 **Full-film ASR completed on CUDA, but automatic timing review failed and blocked final export.** The retained raw transcript was compared with the existing Subtitle Edit sidecar. This is a recorded failure of the complete native-preset pipeline, not a successful final-subtitle export.
 
 ## Scope and reference

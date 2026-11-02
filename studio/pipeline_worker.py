@@ -422,6 +422,7 @@ class PipelineRunner:
             timing=self.stage('asr-timing-review',lambda f:repair_timing(self,f,raw,audio))
             raw={'track':timing['track'],'confidence':timing['confidence']}
             self.state['asr_timing_repairs']=len(timing['changes'])
+            self.state['asr_timing_estimated']=timing.get('estimated_display_repairs',0)
         base=track_from(raw['track']);final=base
         scan=None
         options=self.config.get('retry_asr',{})
@@ -763,6 +764,7 @@ class PipelineRunner:
                       f'Nierozstrzygnięte frazy: {sum(not r["applied"] for r in report["jp_review"]["fragments"])}. Czasy napisów zachowano.']
         if report['asr_timing_review']:
             lines += [f'Automatic ASR timing review: {len(report["asr_timing_review"]["changes"])} repairs; raw text and original hypotheses retained.']
+            lines += [f'Unverified display timing recoveries: {report["asr_timing_review"].get("estimated_display_repairs",0)}; these are not measured speech boundaries.']
         lines += [f'- #{r["index"]+1}: '+ '; '.join(r['issues']) for r in rows if r['issues']]
         lines += ['Eksport zablokowany: '+message for message in blocked]
         lines += ['Odrzucony ASR: '+f['name']+' • '+f['reason'] for f in report['asr_failures']]

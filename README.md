@@ -18,7 +18,7 @@ The current priority is Japanese transcription. English translation is optional.
 - Local comparison of ASR phrases with surrounding text and timestamps. Corroborated retries can correct a phrase while disputed text remains available for listening and comparison.
 - Optional short/wide audio contexts with different VAD boundaries, bounded target budgets and corroboration across two model weights.
 - Final-text forced alignment, non-overlapping timing selection and word-boundary splitting of long cues, with reading-exposure and manual-edit protection. Original timings remain available.
-- Automatic timing review repairs supported zero-duration boundaries and retries bounded audio when needed, preserving all source text, original hypotheses and manual work.
+- Automatic timing review repairs zero-duration boundaries and retries bounded audio. When retries cannot preserve the source wording, it continues with explicitly flagged display-time recovery, retaining all source text, original hypotheses and manual work.
 - Protection for manually edited or reviewed cues, with source provenance and before/after records.
 - Explicit human phrase selection with saved provenance and undo. New disagreement targets cannot displace earlier low-confidence windows.
 - Timing, overlap, reading-speed, and line-length checks; SRT, ASS, SSA, and TXT support. Imported ASS/SSA styling is not preserved.
@@ -68,7 +68,7 @@ Dependencies, models, and media retain their own licenses. See [THIRD_PARTY.md](
 .\.venv\Scripts\python.exe -m pytest -q
 ```
 
-The current suite contains **310 passing tests**, also verified on a clean source-only copy without developer data or models. It covers editing, persistence, manual-change protection, ASR comparison, third-model routing, grouped output ownership and failure isolation, context-choice validation, evaluation-only oracle selection, stage ordering, exports, and resume behavior. Unit tests do not require model weights or a GPU. Hardware verification scripts in `tools/` require separately prepared runtimes, models, and media.
+The current suite contains **325 passing tests**, also verified on a clean source-only copy without developer data or models. It covers editing, persistence, manual-change protection, ASR comparison, third-model routing, grouped output ownership and failure isolation, context-choice validation, evaluation-only oracle selection, stage ordering, exports, and resume behavior. Unit tests do not require model weights or a GPU. Hardware verification scripts in `tools/` require separately prepared runtimes, models, and media.
 
 The latest frozen 17-case CUDA check found no text improvement on ten new read-speech clips or four paired noise variants, and a small reference-distance regression in an additional meeting interval. It also exposed no-speech completion and whitespace round-trip issues. See the report for coverage and limits; successful execution alone is not transcription-quality evidence.
 

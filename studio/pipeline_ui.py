@@ -273,7 +273,7 @@ class PipelinePanel(QWidget):
         config.update(adaptive_retry={'enabled':self.transcription_only.isChecked() and self.retry_clips.isChecked() and self.adaptive_audio.isChecked()},
             jp_alignment={'enabled':self.transcription_only.isChecked() and self.align_audio.isChecked()})
         if native:config.update(source_review_version=None,jp_context_review=False,retry_asr={'enabled':False},adaptive_retry={'enabled':False})
-        config['asr_timing_review']={'enabled':self.transcription_only.isChecked(),'max_targets':8}
+        config['asr_timing_review']={'enabled':self.transcription_only.isChecked(),'max_targets':8,'display_fallback':True}
         steps = plan(config)
         self.stages.setRowCount(len(steps))
         for row,stage in enumerate(steps):
@@ -484,7 +484,7 @@ class PipelinePanel(QWidget):
             context=self.jp_context_review.isChecked()
             if context and not self.judge.currentData(): raise ValueError('Select a model for Japanese context review, or disable that review.')
             config.update(review='rules',jp_context_review=context,autosplit=False,
-                asr_timing_review={'enabled':True,'max_targets':8},
+                asr_timing_review={'enabled':True,'max_targets':8,'display_fallback':True},
                 adaptive_retry={'enabled':self.retry_clips.isChecked() and self.adaptive_audio.isChecked() and bool(auxiliary),'max_targets':self.adaptive_limit.value()},
                 jp_alignment={'enabled':self.align_audio.isChecked(),'split':self.align_split.isChecked(),'max_shift_ms':1500},
                 judge_model=self.judge.currentData() if context else '',
@@ -608,6 +608,7 @@ class PipelinePanel(QWidget):
             if state['config'].get('adaptive_retry',{}).get('enabled'):edits+=f' • adaptive edits: {state.get("jp_adaptive_changes",0)}'
             if state['config'].get('jp_alignment',{}).get('enabled'):edits+=f' • aligned: {state.get("jp_retimed_cues",0)} • split: {state.get("jp_split_cues",0)}'
             if state['config'].get('asr_timing_review',{}).get('enabled'):edits+=f' • timing repairs: {state.get("asr_timing_repairs",0)}'
+            if state.get('asr_timing_estimated'):edits+=f' • unverified display timing: {state["asr_timing_estimated"]}'
         if rejected: edits+=f' • odrzucone ASR: {len(state.get("asr_failures",[]))}'
         action='sprawdź i popraw' if state['config'].get('review') in {'balanced','deep'} and repairs_enabled(state['config']) else 'sprawdzanie'
         self.summary.setText(f'Etapy: {done}/{len(state["stages"])} • {status} • {action}{edits} • '

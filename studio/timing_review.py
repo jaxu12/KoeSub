@@ -1,11 +1,12 @@
 """Automatic repair of isolated ASR timing defects, before strict downstream use.
 
 Keep raw hypotheses, protect manual work, preserve text, and distinguish reading
-exposure from acoustic boundaries. Unsupported repairs remain explicit failures.
+exposure from acoustic boundaries. Unverified display recovery remains visible.
 """
 from copy import deepcopy
 from dataclasses import asdict
 import math
+from pathlib import Path
 import time
 
 from .audio_boundaries import audio_digest
@@ -75,6 +76,65 @@ def retry_window(track,index,padding,start,end):
     return {'start':left,'end':right,'indices':indices}
 
 
+def boundary_prefix_merge(track,index,rules,limit):
+    """Keep an existing following display interval at the exact shared boundary."""
+    cues=track.segments;zero=cues[index]
+    if index+1>=len(cues) or protected(zero) or zero.start!=zero.end or not 0<char_count(zero.text)<=4:return None
+    following=cues[index+1]
+    if protected(following) or not 0<=following.start<following.end<=limit or following.start!=zero.start:return None
+    if any(c.text.lstrip().startswith(('-', '—', '–')) or any(x in c.text for x in ':：') for c in (zero,following)):return None
+    text=zero.text+following.text;duration=following.end-following.start
+    if char_count(text)>rules.jp_line*rules.max_lines or duration<rules.min_ms:return None
+    if metrics(text,duration)['cps']>max(rules.jp_cps,metrics(following.text,duration)['cps']):return None
+    merged=deepcopy(following);merged.id=uid();merged.parents=[zero.id,following.id]
+    merged.text=text;merged.source='asr-timing-review-prefix-merge';merged.review_status='unreviewed';merged.translation_key=''
+    merged.notes=list(dict.fromkeys(zero.notes+following.notes+[
+        'Timing review: zero-duration prefix merged at its shared boundary; original hypotheses retained.']))
+    return merged,{'action':'boundary_prefix_merge','before':[asdict(zero),asdict(following)],'after':[asdict(merged)],
+        'source_end':following.end,'display_hold_ms':0,'scope':'Formal display merge; unchanged following bounds, including existing duration warnings; no speech verification'}
+
+
+def display_recovery(track,index,rules,start,end):
+    """Last-resort display exposure, explicitly unverified, with protected barriers.
+
+    Prefer free space around the original point. When no space exists, expand
+    an adjacent unprotected span until a legal display interval exists.
+    Text/order are retained; this does not estimate where words were spoken.
+    """
+    cues=track.segments
+    if protected(cues[index]) or end<=start:return None
+    left=index;right=index+1
+    while True:
+        before=cues[left:right]
+        low=max(start,cues[left-1].end) if left else start
+        high=min(end,cues[right].start) if right<len(cues) else end
+        if high>low:
+            text=''.join(c.text for c in before)
+            desired=min(rules.max_ms,max(rules.min_ms,math.ceil(char_count(text)*1000/rules.jp_cps)),high-low)
+            # Prefer normal gaps, but do not manufacture overlap to meet them.
+            if high-low>=desired+rules.gap_ms*((left>0)+(right<len(cues))):
+                if left:low+=rules.gap_ms
+                if right<len(cues):high-=rules.gap_ms
+            native_start=min(c.start for c in before);native_end=max(c.end for c in before)
+            finish=min(high,max(low+desired,native_end,native_start+desired))
+            begin=max(low,min(native_start,finish-desired))
+            if start<=begin<finish<=end:
+                recovered=deepcopy(before[0]);recovered.id=uid();recovered.parents=[c.id for c in before]
+                recovered.text=text;recovered.start=begin;recovered.end=finish
+                recovered.source='asr-timing-review-estimated-display';recovered.review_status='unreviewed';recovered.translation_key=''
+                recovered.notes=list(dict.fromkeys([note for c in before for note in c.notes]+[
+                    'Timing review: estimated display timing; speech boundaries unverified.']))
+                return left,right,recovered,{'action':'estimated_display_recovery','before':[asdict(c) for c in before],
+                    'after':[asdict(recovered)],'requires_listening':True,'timing_basis':'estimated_display',
+                    'scope':'Display-only recovery after unsupported timing; source text/bounds retained in provenance; no acoustic accuracy claim'}
+        choices=[]
+        if left and not protected(cues[left-1]):choices.append((char_count(cues[left-1].text),0))
+        if right<len(cues) and not protected(cues[right]):choices.append((char_count(cues[right].text),1))
+        if not choices:return None
+        if min(choices)[1]==0:left-=1
+        else:right+=1
+
+
 def retry_replacement(original,candidate,start,end):
     """Accept measured native bounds only when the complete text is retained."""
     if not candidate.segments or timing_issues(candidate,start,end):return None
@@ -126,17 +186,21 @@ def repair_timing(runner,folder,raw,audio):
         if not issues:break
         index=issues[0]['index'];cue=track.segments[index]
         proposal=boundary_merge(track,index,runner.rules,end)
+        prefix=False
+        if not proposal:
+            proposal=boundary_prefix_merge(track,index,runner.rules,end);prefix=bool(proposal)
         if proposal:
             merged,change=proposal
-            track.segments[index-1:index+1]=[merged];state['changes'].append(change)
-            runner.event('phase',message='Timing review • repaired a zero-duration suffix at an existing boundary')
+            first=index if prefix else index-1
+            track.segments[first:first+2]=[merged];state['changes'].append(change)
+            runner.event('phase',message='Timing review • repaired a zero-duration caption at an existing boundary')
         else:
             targets=state.setdefault('audio_targets',[])
+            budget_available=cue.id in targets or len(targets)<options.get('max_targets',8)
             if cue.id not in targets:
-                if len(targets)>=options.get('max_targets',8):raise AsrQualityError('Timing review audio target budget exhausted; raw hypotheses retained')
-                targets.append(cue.id);checkpoint()
+                if budget_available:targets.append(cue.id);checkpoint()
             accepted=False;seen=set()
-            for padding in (6000,12000):
+            for padding in ((6000,12000) if budget_available else ()):
                 window=retry_window(track,index,padding,start,end)
                 if not window or (window['start'],window['end']) in seen:continue
                 seen.add((window['start'],window['end']))
@@ -178,7 +242,8 @@ def repair_timing(runner,folder,raw,audio):
                         value={'usable':False,'error':str(exc)}
                     value['seconds']=round(time.monotonic()-began,3)
                     write_json(receipt,{'identity':identity,'result':value,'digest':digest(value),'audio_sha256':audio_digest(wav)})
-                state['attempts'].append({'window':window,'receipt':str(receipt),'usable':value['usable']})
+                if not any(a['window']==window and Path(a['receipt']).parent.name==directory.name for a in state['attempts']):
+                    state['attempts'].append({'window':window,'receipt':str(receipt),'usable':value['usable']})
                 replacement=retry_replacement(before,track_from(value['track']),window['start'],window['end']) if value['usable'] else None
                 if replacement:
                     first,last=window['indices'][0],window['indices'][-1]
@@ -188,6 +253,14 @@ def repair_timing(runner,folder,raw,audio):
                         'after':[asdict(c) for c in replacement],'receipt':str(receipt),'display_hold_ms':0})
                     track=proposed;accepted=True;break
             if not accepted:
+                recovery=display_recovery(track,index,runner.rules,start,end) if options.get('display_fallback',True) else None
+                if recovery:
+                    first,last,recovered,change=recovery
+                    proposed=deepcopy(track);proposed.segments[first:last]=[recovered]
+                    if len(timing_issues(proposed,start,end))>=len(issues):raise ValueError('Display recovery did not reduce timing defects')
+                    state['changes'].append(change);track=proposed
+                    runner.event('phase',message='Timing review • recovered display timing; audio boundaries remain unverified')
+                    state['track']=asdict(track);checkpoint();continue
                 state['track']=asdict(track);checkpoint()
                 raise AsrQualityError('No supported automatic timing repair; original hypotheses and local attempts retained')
         state['track']=asdict(track);checkpoint()
@@ -195,4 +268,5 @@ def repair_timing(runner,folder,raw,audio):
     scores=raw.get('confidence',{})
     confidence={c.id:scores[c.parents[0]] for c in track.segments if len(c.parents)==1 and c.parents[0] in scores}
     return {**state,'confidence':confidence,'initial_issues':initial,'fixed_issues':len(initial),'raw_track':asdict(original),
-        'scope':'Automatic timing review; source text and raw hypotheses preserved; display hold is not speech alignment'}
+        'estimated_display_repairs':sum(c['action']=='estimated_display_recovery' for c in state['changes']),
+        'scope':'Automatic timing review; source text and raw hypotheses preserved; estimated display recovery/hold is not speech alignment'}

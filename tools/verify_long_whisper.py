@@ -124,8 +124,8 @@ class LiveMonitor:
     def close(self):self.stop.set();self.thread.join(timeout=7)
 
 
-def save_project(root,state,historical):
-    config=state['config'];project=Project(name='KoeSub - 30 minute native Whisper test',media=config['media'],duration=config['media_duration'])
+def save_project(root,state,historical,name='KoeSub - 30 minute native Whisper test'):
+    config=state['config'];project=Project(name=name,media=config['media'],duration=config['media_duration'])
     if historical:project.add_track(historical)
     stages={}
     for stage in state['stages']:

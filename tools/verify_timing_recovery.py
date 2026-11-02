@@ -6,6 +6,7 @@ are new work; local native retries, if required, are counted separately.
 import argparse
 from copy import deepcopy
 from pathlib import Path
+import shutil
 import sys
 import time
 
@@ -22,14 +23,22 @@ def recover(source,output):
     old=load_run(source);native=source.parent/'asr-0'
     files=list(native.glob('*.srt'))
     if len(files)!=1:raise ValueError('Choose an unambiguous saved native SRT')
-    preserved=[source,native/'engine.log',files[0]]
+    preserved=[p for p in source.parent.rglob('*') if p.is_file()]
     hashes={str(p):audio_digest(p) for p in preserved}
-    config=deepcopy(old['config']);config.update(asr_timing_review={'enabled':True,'max_targets':8},output_dir=str(output/'exports'))
+    pointer=Path('data/last_project.json');main_before=pointer.read_bytes() if pointer.exists() else None
+    config=deepcopy(old['config']);config.update(output_dir=str(output/'exports'))
+    config['asr_timing_review']={**config.get('asr_timing_review',{}),'enabled':True}
+    config['asr_timing_review'].setdefault('max_targets',8)
     manifest=output/'run/manifest.json'
     if manifest.exists():raise ValueError('Use a new recovery directory')
     state=create_run(config,manifest.parent);runner=PipelineRunner(manifest,lambda *a,**k:None)
     log=(native/'engine.log').read_text('utf8',errors='replace')
-    raw=runner.parse_asr(native,config['asr'][0],log,config['start'],config['duration'])
+    old_asr=next(s for s in old['stages'] if s['id']=='asr-0')
+    reuse_raw=old_asr['status']=='completed'
+    if reuse_raw:
+        raw=read_json(old_asr['artifact'])
+        if digest(raw)!=old_asr['digest']:raise ValueError('Changed completed raw ASR artifact')
+    else:raw=runner.parse_asr(native,config['asr'][0],log,config['start'],config['duration'])
     assert raw.get('timing_review_pending')
     for key,value in [('audio',read_json(source.parent/'audio/result.json')),('asr-0',raw)]:
         stage=next(s for s in state['stages'] if s['id']==key);target=manifest.parent/key/'result.json';write_json(target,value)
@@ -37,6 +46,10 @@ def recover(source,output):
         stage.update(status='completed',artifact=str(target),digest=digest(value),seconds=0,original_seconds=prior.get('seconds',0),
             replayed_from=str(files[0] if key=='asr-0' else source.parent/'audio/result.json'))
     write_json(manifest,state);started=time.monotonic()
+    previous_review=source.parent/'asr-timing-review'
+    if reuse_raw and (previous_review/'partial.json').is_file():
+        shutil.copytree(previous_review,manifest.parent/'asr-timing-review')
+    native_before={str(p):audio_digest(p) for p in manifest.parent.rglob('engine-process.json')}
     run_pipeline(manifest,lambda kind,**data:print(data['message'],flush=True) if kind=='phase' else None)
     state=audit_result(manifest)
     timing=read_json(manifest.parent/'asr-timing-review/result.json');final=track_from(read_json(manifest.parent/'jp-layout/result.json')['track'])
@@ -49,10 +62,20 @@ def recover(source,output):
     assert before==[(s['id'],s['digest'],s['seconds']) for s in resumed['stages']]
     summary={'manifest':str(manifest),'seconds_new_work':round(time.monotonic()-started,3),'cached_source':str(source),
         'before_cues':len(incoming.segments),'after_cues':len(final.segments),'repairs':len(timing['changes']),
-        'local_retry_receipts':len(timing['attempts']),'new_native_processes':len(list(manifest.parent.rglob('engine-process.json'))),
+        'local_retry_receipts':len(timing['attempts']),
+        'new_native_processes':sum(native_before.get(str(p))!=audio_digest(p) for p in manifest.parent.rglob('engine-process.json')),
+        'estimated_display_repairs':timing.get('estimated_display_repairs',0),'warnings':state['warnings'],
+        'main_project_unchanged':(pointer.read_bytes() if pointer.exists() else None)==main_before,
         'changes':timing['changes'],'raw_evidence_unchanged':True,'text_preserved':True,'resume_unchanged':True,
         'scope':'Cached long ASR replay with new automatic timing review/export; not fresh long transcription or independent audio quality'}
-    write_json(output/'summary.json',summary);save_project(output,state,None)
+    historical=None;protocol=source.parent.parent/'protocol.json'
+    if protocol.is_file():
+        reference=read_json(protocol)
+        if reference.get('reference'):
+            path=Path(reference['reference'])
+            if audio_digest(path)!=reference.get('reference_sha256'):raise ValueError('Changed comparison reference')
+            historical=load_srt(path);historical.name='Subtitle Edit reference - unverified ASR'
+    write_json(output/'summary.json',summary);save_project(output,state,historical,name='KoeSub - recovered ASR timing')
     print('TIMING RECOVERY',summary['before_cues'],summary['after_cues'],summary['repairs'],summary['seconds_new_work'],flush=True)
 
 

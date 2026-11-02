@@ -127,6 +127,8 @@ def review_track(track: Track | None, settings: ReviewSettings, media_duration=0
         duration = segment.end - segment.start
         jp, en = metrics(segment.text, duration), metrics(segment.translation, duration)
         warnings = []
+        if segment.review_status!='reviewed' and any(note.startswith('Timing review: estimated display timing') for note in segment.notes):
+            warnings.append('Estimated display timing; speech boundaries require listening')
         if segment.start < 0 or duration <= 0:
             warnings.append('Nieprawidłowy czas')
         elif duration < settings.min_ms:
