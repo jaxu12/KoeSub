@@ -299,16 +299,24 @@ class PipelineRunner:
             raise AsrQualityError('ASR zwrócił uszkodzony tekst lub format napisów. Wynik odrzucono.') from exc
         if not track.segments:
             raise AsrQualityError('ASR nie zwrócił dialogów.')
+        untouched=copy.deepcopy(track)
+        timing_pending=False
         try:
             normalize_asr_times(track,range_start,range_duration,self.config['media_duration'])
         except ValueError as exc:
-            raise AsrQualityError(str(exc)) from exc
+            if folder.name!='asr-0' or not self.config.get('asr_timing_review',{}).get('enabled'):
+                raise AsrQualityError(str(exc)) from exc
+            # Keep the exact hypothesis for automatic review; do not mutate a
+            # partially normalized track after the first bad cue.
+            track=untouched;timing_pending=True
+            for segment in track.segments:segment.start+=range_start;segment.end+=range_start
         for segment in track.segments:
             segment.source = str(folder)
         track.name = 'Pipeline • '+item['name']+(' • VAD' if item['vad'] else ' • bez VAD')
         track.origin.update(pipeline=self.folder.name,configuration=item)
         result={'track':asdict(track)}
-        if (folder/'transcript.json').is_file():
+        if timing_pending:result['timing_review_pending']=True
+        if not timing_pending and (folder/'transcript.json').is_file():
             from .asr_retry import token_confidence
             try:
                 result['confidence']=token_confidence(read_json(folder/'transcript.json'),track,range_start)
@@ -409,6 +417,11 @@ class PipelineRunner:
     def run_jp(self):
         audio=self.stage('audio',self.audio)['audio']
         raw=self.stage('asr-0',lambda f:self.asr(f,self.config['asr'][0],audio))
+        if self.config.get('asr_timing_review',{}).get('enabled'):
+            from .timing_review import repair_timing
+            timing=self.stage('asr-timing-review',lambda f:repair_timing(self,f,raw,audio))
+            raw={'track':timing['track'],'confidence':timing['confidence']}
+            self.state['asr_timing_repairs']=len(timing['changes'])
         base=track_from(raw['track']);final=base
         scan=None
         options=self.config.get('retry_asr',{})
@@ -711,6 +724,8 @@ class PipelineRunner:
                   'limitation':'ASR selection and AI review are text-based, not proof of audio accuracy. Source tracks preserved.'}
         report['status'] = 'needs_review' if report['warnings'] or blocked else 'completed'
         report['manual_reviews']=self.state.get('manual_reviews',[])
+        timing_path=self.folder/'asr-timing-review/result.json'
+        report['asr_timing_review']=read_json(timing_path) if timing_path.is_file() else None
         repair_result=self.folder/'repair/result.json'
         report['review_changes']=read_json(repair_result).get('changes',[]) if repair_result.is_file() else []
         report['review_changed_cues']=len(report['review_changes'])
@@ -746,6 +761,8 @@ class PipelineRunner:
         if report['jp_review']:
             lines += [f'Review JP przed tłumaczeniem: {len(report["jp_review"]["changes"])} zmian fraz w {report["jp_review"]["changed_cues"]} napisach.',
                       f'Nierozstrzygnięte frazy: {sum(not r["applied"] for r in report["jp_review"]["fragments"])}. Czasy napisów zachowano.']
+        if report['asr_timing_review']:
+            lines += [f'Automatic ASR timing review: {len(report["asr_timing_review"]["changes"])} repairs; raw text and original hypotheses retained.']
         lines += [f'- #{r["index"]+1}: '+ '; '.join(r['issues']) for r in rows if r['issues']]
         lines += ['Eksport zablokowany: '+message for message in blocked]
         lines += ['Odrzucony ASR: '+f['name']+' • '+f['reason'] for f in report['asr_failures']]

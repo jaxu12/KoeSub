@@ -11,13 +11,14 @@ The current priority is Japanese transcription. English translation is optional.
 - Video playback, waveform navigation, cue playback, editing, undo/redo, and SQLite projects.
 - Local Whisper Large V3 inference through whisper.cpp/CrispASR, VAD, and an explicit GPU backend.
 - A separate **Subtitle Edit Whisper • CUDA FP16 + MDX** source-only preset reuses installed Faster-Whisper-XXL, CTranslate2 weights and Kim2 vocal extraction. It supports native defaults and stereo preprocessing while skipping CrispASR-specific retry/review stages.
-- A one-click Japanese pipeline: **audio → baseline ASR → optional auxiliary scan → grouped retries → third ASR for unresolved windows → phrase review → optional JP scene review → adaptive contexts → final audio alignment → layout → subtitles and report**.
+- A one-click Japanese pipeline: **audio → baseline ASR → automatic timing review → optional auxiliary scan → grouped retries → third ASR for unresolved windows → phrase review → optional JP scene review → adaptive contexts → final audio alignment → layout → subtitles and report**.
 - Bounded third-model work, normally Qwen3-ASR JA Anime/Galgame. A third decoder can corroborate a baseline retry; two auxiliaries cannot outvote it. Timing, phrase boundaries, confidence and manual-edit guards still apply.
 - Several retry clips can share one native process per model. Models run sequentially; per-clip logs, confidence, native output and resume receipts are retained.
 - Japanese context review checks nearby dialogue for suspicious words, names and continuity, with exact ASR-choice recommendations. It does not translate or automatically rewrite dialogue.
 - Local comparison of ASR phrases with surrounding text and timestamps. Corroborated retries can correct a phrase while disputed text remains available for listening and comparison.
 - Optional short/wide audio contexts with different VAD boundaries, bounded target budgets and corroboration across two model weights.
 - Final-text forced alignment, non-overlapping timing selection and word-boundary splitting of long cues, with reading-exposure and manual-edit protection. Original timings remain available.
+- Automatic timing review repairs supported zero-duration boundaries and retries bounded audio when needed, preserving all source text, original hypotheses and manual work.
 - Protection for manually edited or reviewed cues, with source provenance and before/after records.
 - Explicit human phrase selection with saved provenance and undo. New disagreement targets cannot displace earlier low-confidence windows.
 - Timing, overlap, reading-speed, and line-length checks; SRT, ASS, SSA, and TXT support. Imported ASS/SSA styling is not preserved.
@@ -67,7 +68,7 @@ Dependencies, models, and media retain their own licenses. See [THIRD_PARTY.md](
 .\.venv\Scripts\python.exe -m pytest -q
 ```
 
-The current suite contains **281 passing tests**, also verified on a clean source-only copy without developer data or models. It covers editing, persistence, manual-change protection, ASR comparison, third-model routing, grouped output ownership and failure isolation, context-choice validation, evaluation-only oracle selection, stage ordering, exports, and resume behavior. Unit tests do not require model weights or a GPU. Hardware verification scripts in `tools/` require separately prepared runtimes, models, and media.
+The current suite contains **302 passing tests**, also verified on a clean source-only copy without developer data or models. It covers editing, persistence, manual-change protection, ASR comparison, third-model routing, grouped output ownership and failure isolation, context-choice validation, evaluation-only oracle selection, stage ordering, exports, and resume behavior. Unit tests do not require model weights or a GPU. Hardware verification scripts in `tools/` require separately prepared runtimes, models, and media.
 
 The latest frozen 17-case CUDA check found no text improvement on ten new read-speech clips or four paired noise variants, and a small reference-distance regression in an additional meeting interval. It also exposed no-speech completion and whitespace round-trip issues. See the report for coverage and limits; successful execution alone is not transcription-quality evidence.
 
@@ -77,6 +78,7 @@ Recorded experiments and their limitations:
 - [Frozen 17-case production benchmark, regressions and next priorities](CURRENT_PIPELINE_BENCHMARK.md)
 - [Subtitle Edit XXL/MDX profile, comparisons and native verification](SUBTITLE_EDIT_WHISPER.md)
 - [Thirty-minute native CUDA trial and its timing-validation failure](LONG_WHISPER_TEST.md)
+- [Automatic timing review and recovery of the saved long-run result](AUTOMATIC_TIMING_REVIEW.md)
 
 - [Source-quality measurement and audio reference audit workflow](SOURCE_QUALITY_EVALUATION.md)
 

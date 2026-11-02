@@ -51,6 +51,8 @@ def plan(config):
     if config.get('transcription_only'):
         stages=[('audio','Przygotowanie audio'),('asr-0','Baza JP • Large V3 + VAD')]
         if config['asr'][0].get('engine')==0:stages[1]=('asr-0','JP baseline • Faster-Whisper XXL • VAD')
+        if config.get('asr_timing_review',{}).get('enabled'):
+            stages.append(('asr-timing-review','Automatic timing review • repair invalid ASR boundaries'))
         if config.get('retry_asr',{}).get('enabled'):
             if config['retry_asr'].get('scan_first') and config['retry_asr'].get('auxiliary'):
                 stages.append(('asr-scan','Auxiliary ASR scan • detect disagreements'))
@@ -91,6 +93,11 @@ def validate_config(config):
     if config.get('source_review_version') not in (None,1,2,3):
         raise ValueError('Nieobsługiwana wersja review oryginału JP.')
     jp_only=config.get('transcription_only',False)
+    timing=config.get('asr_timing_review',{})
+    if not isinstance(timing,dict) or type(timing.get('enabled',False)) is not bool:raise ValueError('Invalid ASR timing review option')
+    if timing.get('enabled'):
+        if not jp_only:raise ValueError('Automatic ASR timing review requires source-only mode')
+        if type(timing.get('max_targets',8)) is not int or not 1<=timing.get('max_targets',8)<=30:raise ValueError('Invalid timing repair budget')
     if jp_only:
         engine=config['asr'][0]['engine'] if len(config['asr'])==1 else None
         if len(config['asr'])!=1 or engine not in (0,2) or 'kotoba' in config['asr'][0]['model'].lower() or not config['asr'][0]['vad']:

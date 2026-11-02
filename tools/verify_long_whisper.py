@@ -156,6 +156,7 @@ def verify(root,source,seconds):
     config={'media':str(audio),'media_duration':duration,'start':0,'duration':length,'audio_track':0,
         'asr':[{'engine':0,'name':model.name,'model':str(model),'kind':'Whisper / CTranslate2','vad':True}],
         'translations':[],'transcription_only':True,'source_review_version':None,'retry_asr':{'enabled':False},'adaptive_retry':{'enabled':False},
+        'asr_timing_review':{'enabled':True,'max_targets':8},
         'jp_alignment':{'enabled':False},'backend':'embedded','judge_model':'','review':'rules','review_settings':{},'settings':asdict(settings),
         'xxl_device':'cuda','xxl_compute':'float16','readability_repair':True,'export_srt':True,'export_format':'srt','output_dir':str(root/'exports')}
     protocol={'production':{str(p):audio_digest(p) for p in sorted(Path('studio').glob('*.py'))},'source_manifest':str(source),

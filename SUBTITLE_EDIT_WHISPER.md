@@ -2,6 +2,8 @@
 
 KoeSub now has a source-only **Subtitle Edit Whisper • CUDA FP16 + MDX** preset. It reuses the existing Faster-Whisper-XXL executable, CTranslate2 Large V3 directory and `Kim_Vocal_2.onnx` from the configured Subtitle Edit installation. Nothing is copied or downloaded.
 
+**Current workflow update:** new source-only runs include [automatic timing review](AUTOMATIC_TIMING_REVIEW.md) between raw ASR and layout. The original four-stage measurements below are historical; the new stage repairs supported invalid native boundaries before final validation.
+
 ## Diagnosis
 
 The previous KoeSub setup selected whisper.cpp/CrispASR with a GGML model. Subtitle Edit used Faster-Whisper-XXL with a CTranslate2 model and these options:

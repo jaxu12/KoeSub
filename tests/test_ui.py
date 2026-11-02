@@ -116,7 +116,7 @@ def test_subtitle_edit_preset_keeps_native_model_and_disables_crisp_retries(wind
     assert not config['retry_asr']['enabled'] and not config['adaptive_retry']['enabled']
     assert not panel.retry_clips.isEnabled() and not panel.jp_context_review.isEnabled()
     assert config['settings']['whisper_vocal_extract']=='mdx_kim2'
-    assert [s['id'] for s in plan(config)]==['audio','asr-0','jp-layout','jp-export']
+    assert [s['id'] for s in plan(config)]==['audio','asr-0','asr-timing-review','jp-layout','jp-export']
     w.set_busy(True);assert not w.whisper_vocals.isEnabled()
     w.set_busy(False);assert w.whisper_vocals.isEnabled()
 
@@ -249,7 +249,7 @@ def test_jp_scope_needs_no_translator_and_fixes_baseline_vad(window,tmp_path):
     assert config['retry_asr']['auxiliary']['model']==str(aux)
     assert config['source_review_version']==3 and config['retry_asr']['scan_first']
     assert config['retry_asr']['batch_retries'] and not config['jp_context_review']
-    assert [s['id'] for s in plan(config)]==['audio','asr-0','asr-scan','asr-retry','jp-review','jp-adaptive','jp-layout','jp-export']
+    assert [s['id'] for s in plan(config)]==['audio','asr-0','asr-timing-review','asr-scan','asr-retry','jp-review','jp-adaptive','jp-layout','jp-export']
 
 
 def test_third_asr_default_and_explicit_disabled_survive_model_refresh(window,tmp_path):

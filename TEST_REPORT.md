@@ -2,7 +2,7 @@
 
 ## Current source-only verification
 
-As of 2026-11-02, **281 tests pass on a clean source-only copy**, without developer data, models or recordings, using the installed development dependencies (verified separately from GPU inference). The test temporary directory is `.pytest-tmp`, which is ignored by Git. A former `data/test-tmp` setting failed on a fresh checkout with no `data` directory and was corrected.
+As of 2026-11-02, **302 tests pass on a clean source-only copy**, without developer data, models or recordings, using the installed development dependencies (verified separately from GPU inference). The test temporary directory is `.pytest-tmp`, which is ignored by Git. A former `data/test-tmp` setting failed on a fresh checkout with no `data` directory and was corrected.
 
 The suite covers editing/undo, persistence, provenance, format round trips, time/readability checks, strict model-response validation, manual translation protection, source phrase comparison, stage ordering before EN, pause/resume, run locks, timeouts, owned child processes, caches, and Qt behavior. Unit tests do not require model weights or a GPU.
 
@@ -21,6 +21,8 @@ Eleven benchmark tests cover deterministic noise/SNR/clipping, label exclusion f
 Native Subtitle Edit Whisper coverage adds six tests for reuse without copies, native flags/defaults, local MDX prerequisites, CT2/vocal-asset receipts, stereo cache identity, source-only execution/resume and UI restrictions. The full suite passed 278 tests in 28.67 seconds; a clean copy passed in 22.40 seconds. Twelve bounded native comparisons and a separate production ASR/export check are documented in [SUBTITLE_EDIT_WHISPER.md](SUBTITLE_EDIT_WHISPER.md). Export resumed after a test-console encoding failure, preserving original native timing/GPU evidence. No full-movie or private-excerpt accuracy claim is made.
 
 The long-test diagnostics add three tests for immutable timing/repetition checks, private-progress filtering and native confidence coverage/silence semantics. The suite passed 281 tests in 15.11 seconds and a clean copy in 16.43 seconds. Separately, a 30-minute CUDA XXL/MDX run returned raw output but failed production validation on one zero-duration caption. No final export or completed-pipeline replay is claimed. See [LONG_WHISPER_TEST.md](LONG_WHISPER_TEST.md).
+
+Automatic timing review adds twenty-one cases covering deferred raw timing validation, reading exposure, speaker/manual protection, bounded exact-text native retries, outside-context preservation, replay/checkpoint integrity, Unicode mapping, budgets and fatal device errors. The final suite passed 302 tests in 15.25 seconds and a clean copy in 17.24 seconds. The real cached long-run result now reaches audited export without another long decode; a separate synthetic timing defect on real audio triggered a fresh bounded CUDA retry. See [AUTOMATIC_TIMING_REVIEW.md](AUTOMATIC_TIMING_REVIEW.md).
 
 ## Historical integration checks
 

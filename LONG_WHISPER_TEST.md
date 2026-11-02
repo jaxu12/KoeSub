@@ -2,6 +2,8 @@
 
 This is a long integration check of the existing **Subtitle Edit Whisper • CUDA FP16 + MDX** preset. Production source hashes and input identity are frozen before inference. No production policy is tuned during the run.
 
+**Later recovery:** automatic timing review now repairs the saved result and produces a valid export without rerunning long ASR. The original failed measurements below remain unchanged. See [AUTOMATIC_TIMING_REVIEW.md](AUTOMATIC_TIMING_REVIEW.md).
+
 ## Input and scope
 
 The test uses the first **1,800 seconds** of the preserved audio from the user's earlier long job. The original movie is no longer present at its previous path. The available audio cache is **16 kHz mono PCM16**, covering approximately 109 minutes. The native preset prepares a separate **44.1 kHz stereo PCM16** file of exactly 30 minutes; converting the cached mono source cannot recover its original stereo channels or lost bandwidth.
