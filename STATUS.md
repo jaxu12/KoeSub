@@ -23,7 +23,7 @@ KoeSub is a working Windows/PySide6 prototype. The current focus is Japanese sou
 
 Source review v2 adds a full auxiliary disagreement scan, protects earlier retry priority, reuses complete scan cues where appropriate, and supports saved human phrase choices with undo. Ten additional clips moved from 67/664 to 65/664 reference edits, primarily from spelling; semantic improvement was not demonstrated. The movie regression fix preserves the two earlier edits. Extra coverage costs more processing time. See [ASR_SCAN_REVIEW_V2.md](ASR_SCAN_REVIEW_V2.md).
 
-The current suite has **278 passing tests**, also verified on a clean source-only copy without developer data or models. Hardware experiments use separately prepared assets; they are not part of the unit-test suite. Source review v3 behavior, fresh CUDA timing comparisons, and reference checks are documented in [SOURCE_REVIEW_V3.md](SOURCE_REVIEW_V3.md).
+The current suite has **281 passing tests**, also verified on a clean source-only copy without developer data or models. Hardware experiments use separately prepared assets; they are not part of the unit-test suite. Source review v3 behavior, fresh CUDA timing comparisons, and reference checks are documented in [SOURCE_REVIEW_V3.md](SOURCE_REVIEW_V3.md).
 
 An earlier ten-clip CUDA benchmark compared five models, production review, and evaluation-only reference-guided selection across the existing MCDC core and five newly acquired FLEURS read-speech recordings. Baseline and production both had 31/645 character edits (4.81% CER); constrained oracle selection reached 21/645 (3.26%). Production applied no phrase changes. This identifies missed targeting/selection opportunities, not a measured improvement in the shipping review. See [ASR_FUSION_BENCHMARK.md](ASR_FUSION_BENCHMARK.md).
 
@@ -36,6 +36,8 @@ The new quality study reuses five completed FLEURS clips (6/257 text differences
 A fresh 282.73-second CUDA movie run took 347.953 seconds, accepted timing changes for 20 cues and reduced reading-speed violations from 16 to 15. Adaptive audio made no additional text changes; five reused reference clips remain at 6/257 character differences. See [ADAPTIVE_AUDIO_AND_ALIGNMENT.md](ADAPTIVE_AUDIO_AND_ALIGNMENT.md).
 
 ## Open work
+
+The 30-minute native XXL/MDX trial completed inference in about fourteen minutes but failed timing validation: one of 183 raw captions has zero duration, blocking final export. CUDA and memory remained operational. A diagnostic project preserves both native and historical hypotheses. Bounded automatic recovery of an invalid region is a priority; this run is not a completed final export. See [LONG_WHISPER_TEST.md](LONG_WHISPER_TEST.md).
 
 The native XXL/MDX profile passed twelve bounded comparison calls with valid times and a separate audited 45-second production ASR/export check. One development reference favored plain XXL over MDX. No full-length or private-excerpt accuracy result is claimed. See [SUBTITLE_EDIT_WHISPER.md](SUBTITLE_EDIT_WHISPER.md).
 
