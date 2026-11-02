@@ -68,7 +68,7 @@ Dependencies, models, and media retain their own licenses. See [THIRD_PARTY.md](
 .\.venv\Scripts\python.exe -m pytest -q
 ```
 
-The current suite contains **302 passing tests**, also verified on a clean source-only copy without developer data or models. It covers editing, persistence, manual-change protection, ASR comparison, third-model routing, grouped output ownership and failure isolation, context-choice validation, evaluation-only oracle selection, stage ordering, exports, and resume behavior. Unit tests do not require model weights or a GPU. Hardware verification scripts in `tools/` require separately prepared runtimes, models, and media.
+The current suite contains **310 passing tests**, also verified on a clean source-only copy without developer data or models. It covers editing, persistence, manual-change protection, ASR comparison, third-model routing, grouped output ownership and failure isolation, context-choice validation, evaluation-only oracle selection, stage ordering, exports, and resume behavior. Unit tests do not require model weights or a GPU. Hardware verification scripts in `tools/` require separately prepared runtimes, models, and media.
 
 The latest frozen 17-case CUDA check found no text improvement on ten new read-speech clips or four paired noise variants, and a small reference-distance regression in an additional meeting interval. It also exposed no-speech completion and whitespace round-trip issues. See the report for coverage and limits; successful execution alone is not transcription-quality evidence.
 
@@ -79,6 +79,7 @@ Recorded experiments and their limitations:
 - [Subtitle Edit XXL/MDX profile, comparisons and native verification](SUBTITLE_EDIT_WHISPER.md)
 - [Thirty-minute native CUDA trial and its timing-validation failure](LONG_WHISPER_TEST.md)
 - [Automatic timing review and recovery of the saved long-run result](AUTOMATIC_TIMING_REVIEW.md)
+- [Full 122-minute CUDA comparison: raw ASR completed, timing review blocked export](FULL_FILM_COMPARISON.md)
 
 - [Source-quality measurement and audio reference audit workflow](SOURCE_QUALITY_EVALUATION.md)
 
