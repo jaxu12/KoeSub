@@ -210,6 +210,8 @@ def save_project(root,state,reference):
     retry=config.get('retry_asr',{})
     project.pipeline_prefs={'transcription_only':True,'asr':config['asr'],'asr_count':1,
         'retry_clips':retry.get('enabled',False),'jp_context_review':config.get('jp_context_review',False),
+        'asr_coverage':config.get('asr_coverage',{}).get('enabled',False),
+        'coverage_seconds':config.get('asr_coverage',{}).get('chunk_ms',30000)//1000,
         'adaptive_audio':config.get('adaptive_retry',{}).get('enabled',False),
         'align_audio':config.get('jp_alignment',{}).get('enabled',False),'start':0,'length':0,
         'scan_first':retry.get('scan_first',False),'batch_retries':retry.get('batch_retries',False),
@@ -261,6 +263,7 @@ def film_config(media,duration,settings,root,full_jp=False):
         config=production_config(sample,settings,root/'exports')
         config.pop('benchmark_audio_sha256',None)  # The source is a movie; its hash is frozen in protocol.json.
         config.update(asr_timing_review={'enabled':True,'max_targets':8,'display_fallback':True},
+            asr_coverage={'enabled':True,'version':2,'chunk_ms':30000,'padding_ms':3000},
             decision_batch_size=4,film_context=False,xxl_device='cuda',xxl_compute='float16')
         return config
     model=settings.use_subtitle_edit_whisper()

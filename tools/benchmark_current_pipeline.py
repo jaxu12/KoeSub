@@ -141,10 +141,11 @@ def technical(track, rules):
 def gpu_evidence(folder, gpu):
     # The ASR predicate checks actual CUDA model buffers. Align-only and the
     # embedded LLM have different logs; correlate their owned PIDs with NVIDIA.
-    logs = [p for p in folder.rglob('engine.log') if p.relative_to(folder).parts[0].startswith('asr-')
-            or p.relative_to(folder).parts[0] == 'jp-adaptive']
+    logs = [p for p in folder.rglob('engine.log') if p.parent.name!='alignment' and
+            (p.relative_to(folder).parts[0].startswith('asr-') or p.relative_to(folder).parts[0] == 'jp-adaptive')]
     observed = {s['pid'] for s in gpu.get('compute_processes', [])}
     aligners = [read_json(p)['pid'] for p in (folder/'jp-align').glob('block-*/engine-process.json')]
+    aligners += [read_json(p)['pid'] for p in (folder/'asr-coverage').glob('*/alignment/engine-process.json')]
     sessions = [read_json(p)['pid'] for p in (folder/'native-sessions').glob('*/session.json')]
     return {'asr_logs': {str(p.relative_to(folder)): cuda_evidence(p.read_text('utf8', errors='replace')) for p in logs},
         'alignment_pids': aligners, 'alignment_pids_observed': [p for p in aligners if p in observed],

@@ -249,10 +249,10 @@ def test_jp_scope_needs_no_translator_and_fixes_baseline_vad(window,tmp_path):
     assert config['retry_asr']['auxiliary']['model']==str(aux)
     assert config['source_review_version']==3 and config['retry_asr']['scan_first']
     assert config['retry_asr']['batch_retries'] and not config['jp_context_review']
-    assert [s['id'] for s in plan(config)]==['audio','asr-0','asr-timing-review','asr-scan','asr-retry','jp-review','jp-adaptive','jp-layout','jp-export']
+    assert [s['id'] for s in plan(config)]==['audio','asr-0','asr-timing-review','asr-coverage','asr-scan','asr-retry','jp-review','jp-adaptive','jp-layout','jp-export']
     p.coverage.setChecked(True);p.coverage_seconds.setValue(15)
     covered=p.config('covered')
-    assert covered['asr_coverage']=={'enabled':True,'chunk_ms':15000,'padding_ms':3000}
+    assert covered['asr_coverage']=={'enabled':True,'version':2,'chunk_ms':15000,'padding_ms':3000}
     assert [s['id'] for s in plan(covered)].index('asr-coverage')==3
     p.retry_clips.setChecked(False)
     assert not p.config('disabled')['asr_coverage']['enabled'] and not p.coverage.isEnabled()

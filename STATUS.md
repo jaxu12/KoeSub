@@ -4,7 +4,7 @@ KoeSub is a working Windows/PySide6 prototype. The current focus is Japanese sou
 
 ## Current behavior
 
-- An experimental, initially disabled short-chunk coverage stage scans the selected audio without VAD, checks missing-line candidates with another model and can fall back to the third decoder after a quality rejection. Original cues/times are preserved. Two real CUDA probes completed but added no lines; omission reduction has not been demonstrated. See [SHORT_CHUNK_COVERAGE.md](SHORT_CHUNK_COVERAGE.md).
+- Japanese GGML jobs enable omission recovery by default, preserving explicit saved off settings. Short scans nominate additional phrases, focused audio decoders corroborate text without requiring aligned auxiliary captions, and a separate aligner supplies gap timing. Global selection avoids overlapping additions while retaining unresolved alternatives and original cues. See [OMISSION_RECOVERY_V2.md](OMISSION_RECOVERY_V2.md).
 
 - New Japanese pipelines run automatic timing review after raw ASR. Supported short boundary defects are merged with explicit reading exposure; other cases use bounded native retries. Raw text, manual edits, hypotheses and repair provenance are retained.
 
@@ -25,9 +25,11 @@ KoeSub is a working Windows/PySide6 prototype. The current focus is Japanese sou
 
 ## Verification
 
+Omission recovery v2 now inserts audio-corroborated phrases in measured baseline gaps. Fresh coverage adds five phrases in a 70-second movie interval and two in a separate three-minute interval; the original captions remain unchanged and exports have no invalid times or overlaps. Six additions match nearby unverified reference text exactly; one remains unassessed. No complete-film run or independent accuracy claim is made. Published-transcript/no-speech controls and cached selection replay are documented in [OMISSION_RECOVERY_V2.md](OMISSION_RECOVERY_V2.md).
+
 Source review v2 adds a full auxiliary disagreement scan, protects earlier retry priority, reuses complete scan cues where appropriate, and supports saved human phrase choices with undo. Ten additional clips moved from 67/664 to 65/664 reference edits, primarily from spelling; semantic improvement was not demonstrated. The movie regression fix preserves the two earlier edits. Extra coverage costs more processing time. See [ASR_SCAN_REVIEW_V2.md](ASR_SCAN_REVIEW_V2.md).
 
-The current suite has **351 passing tests**, also verified on a clean source-only copy without developer data or models. Hardware experiments use separately prepared assets; they are not part of the unit-test suite. Source review v3 behavior, fresh CUDA timing comparisons, and reference checks are documented in [SOURCE_REVIEW_V3.md](SOURCE_REVIEW_V3.md).
+The current suite has **369 passing tests**, also verified on a clean source-only copy without developer data or models. Hardware experiments use separately prepared assets; they are not part of the unit-test suite. Source review v3 behavior, fresh CUDA timing comparisons, and reference checks are documented in [SOURCE_REVIEW_V3.md](SOURCE_REVIEW_V3.md).
 
 An earlier ten-clip CUDA benchmark compared five models, production review, and evaluation-only reference-guided selection across the existing MCDC core and five newly acquired FLEURS read-speech recordings. Baseline and production both had 31/645 character edits (4.81% CER); constrained oracle selection reached 21/645 (3.26%). Production applied no phrase changes. This identifies missed targeting/selection opportunities, not a measured improvement in the shipping review. See [ASR_FUSION_BENCHMARK.md](ASR_FUSION_BENCHMARK.md).
 

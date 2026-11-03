@@ -1,8 +1,10 @@
 # Short-chunk coverage search
 
+This document records the initial version and its historical probes. Current jobs use [omission recovery version 2](OMISSION_RECOVERY_V2.md), enabled by default for new Japanese GGML runs, with separate text corroboration, focused alignment and global insertion selection. Explicit saved off settings and existing version-1 manifests are preserved.
+
 The Japanese workflow can search for whole lines missing from baseline gaps. Existing retry selection mostly starts from existing cues; a completely missing utterance may have no low-confidence cue to select. This optional stage scans the entire selected audio range instead of relying on the existing cue list.
 
-## Controls and behavior
+## Historical version-1 controls and behavior
 
 Enable **Search for missed lines • short overlapping audio chunks (experimental)** in the Japanese pipeline. Select 15–120 seconds per chunk; the initial value is 30 seconds. Settings are saved per project. It is initially disabled, and old manifests retain their original plans. The separate native Subtitle Edit XXL/MDX preset does not support this stage yet.
 

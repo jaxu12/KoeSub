@@ -2,7 +2,7 @@
 
 ## Current source-only verification
 
-As of 2026-11-03, **351 tests pass on a clean source-only copy**, without developer data, models or recordings, using the installed development dependencies (verified separately from GPU inference). The test temporary directory is `.pytest-tmp`, which is ignored by Git. A former `data/test-tmp` setting failed on a fresh checkout with no `data` directory and was corrected.
+As of 2026-11-03, **369 tests pass on a clean source-only copy**, without developer data, models or recordings, using the installed development dependencies (verified separately from GPU inference). The test temporary directory is `.pytest-tmp`, which is ignored by Git. A former `data/test-tmp` setting failed on a fresh checkout with no `data` directory and was corrected.
 
 The suite covers editing/undo, persistence, provenance, format round trips, time/readability checks, strict model-response validation, manual translation protection, source phrase comparison, stage ordering before EN, pause/resume, run locks, timeouts, owned child processes, caches, and Qt behavior. Unit tests do not require model weights or a GPU.
 
@@ -25,6 +25,8 @@ The long-test diagnostics add three tests for immutable timing/repetition checks
 Automatic timing review adds twenty-one cases covering deferred raw timing validation, reading exposure, speaker/manual protection, bounded exact-text native retries, outside-context preservation, replay/checkpoint integrity, Unicode mapping, budgets and fatal device errors. The final suite passed 302 tests in 15.25 seconds and a clean copy in 17.24 seconds. The real cached long-run result now reaches audited export without another long decode; a separate synthetic timing defect on real audio triggered a fresh bounded CUDA retry. See [AUTOMATIC_TIMING_REVIEW.md](AUTOMATIC_TIMING_REVIEW.md).
 
 ## Historical integration checks
+
+Omission recovery v2 separates text-only decoding, added-phrase extraction, focused corroboration and acoustic alignment. Global interval selection preserves usable insertions while retaining timing/lexical disputes. The full suite passes 369 tests in 23.01 seconds, and a clean source-only copy passes in 24.95 seconds. Fresh CUDA coverage on unmodified movie baselines adds five phrases in 70 seconds of audio and two in 180 seconds, with exact original-cue preservation, no invalid times/overlaps and audited exports. Reference edits change from 83 to 39 / 156 and 285 to 274 / 393; six of seven additions exactly match nearby unverified ASR-reference text. Three controlled FLEURS omissions and two no-speech controls provide separate measurements. See [OMISSION_RECOVERY_V2.md](OMISSION_RECOVERY_V2.md) for incomplete cases, cached-selection replay, timing and GPU evidence.
 
 Short-chunk coverage adds twenty-two local cases, including full JP export/replay, corroboration, conflict/duplicate handling, manual preservation, auxiliary-quality fallback and fatal device errors. Existing Qt tests verify controls and persisted settings. The required full suite passes 351 tests in 17.36 seconds; a clean source-only copy passes in 19.44 seconds. Separate fresh 70-second CUDA probes with 30- and 15-second cores take 24.140 and 46.516 seconds, nominate five and two possible gap lines, and add none. Neither restores the artificially masked ASR hypothesis. Those are integration results using a cached baseline, not proof of fewer omissions or independent transcription accuracy. See [SHORT_CHUNK_COVERAGE.md](SHORT_CHUNK_COVERAGE.md).
 

@@ -142,6 +142,36 @@ def test_cancelled_batch_hypotheses_are_preserved_but_cannot_be_mistaken_for_new
     assert len(list(tmp_path.glob('previous-uncommitted/*')))==1
 
 
+def test_text_only_native_batch_preserves_unaligned_hypotheses_without_requesting_an_aligner(tmp_path,monkeypatch):
+    from studio import source_review_v3
+    from studio.storage import Settings
+    model=tmp_path/'model.bin';model.write_bytes(b'local fixture')
+    item={'engine':2,'name':'aux','kind':'Whisper / GGML','model':str(model),'vad':False}
+    monkeypatch.setattr(source_review_v3,'whisper_cpp_command',lambda settings,model,audio,output,*a:
+        ['--file',str(audio),'--output-file',str(output/'transcript'),'--aligner-model','unused.gguf',
+         '--force-aligner','--output-srt','--output-json'])
+    commands=[]
+    def call(args,folder,name,timeout):
+        if name=='version':return '[backends: cuda cpu]'
+        if name=='help':return '--file --output-file --output-json-full'
+        commands.append(args)
+        for at in (i for i,v in enumerate(args) if v=='--output-file'):
+            write_json(__import__('pathlib').Path(args[at+1]+'.json'),{'transcription':[{
+                'text':'待ってください。','offsets':{'from':-10,'to':-10},
+                'tokens':[{'text':'待ってください。','p':.9,'offsets':{'from':-10,'to':-10}}]}]})
+        (folder/'engine.log').write_text('CUDA0 buffer',encoding='utf8')
+        return 'CUDA0 buffer'
+    runner=SimpleNamespace(settings=Settings(crisp_gpu_backend='cuda'),call=call)
+    jobs=[{'folder':tmp_path/'clip','audio':tmp_path/'audio.wav','start':10000,'end':15000}]
+    result=source_review_v3.decode_batch(runner,tmp_path/'batch',item,jobs,text_only=True)[0]
+    assert result['usable'] and result['text_usable'] and not result['timing_usable']
+    assert result['text']=='待ってください。'
+    assert result['document']['transcription'][0]['offsets']=={'from':-10,'to':-10}
+    assert 'targeting uses crop bounds' in result['track']['segments'][0]['notes'][0]
+    assert not any(flag in commands[0] for flag in ('--aligner-model','--force-aligner','--output-srt'))
+    assert '--output-json-full' in commands[0]
+
+
 def test_context_resume_rejects_changed_instructions(tmp_path,monkeypatch):
     from studio import jp_context_review
     base,window,scores=example();review=review_fragments(base,[window],scores,'large.bin',version=3)

@@ -50,6 +50,43 @@ def _near(a,b):
     return overlap>=.5*min(a['end']-a['start'],b['end']-b['start'])
 
 
+def select_focused(records):
+    """Choose compatible corroborated insertions globally, preserving disputes.
+
+    Almost identical intervals with contradictory wording are not a scheduling
+    problem: retain both for listening. Otherwise maximize supported character
+    coverage, then complete word timing, confidence and compact exposure.
+    """
+    pool=[i for i,r in enumerate(records) if r['eligible'] and r.get('verification',{}).get('version')==2]
+    blocked=set()
+    for i in pool:
+        a=records[i]['cue'];text=normalize(a['text'])
+        for j in pool:
+            if i==j:continue
+            b=records[j]['cue'];other=normalize(b['text'])
+            if text in other and len(text)<len(other) and b['start']<=a['start']+80 and b['end']>=a['end']-80:
+                blocked.add(i);records[i]['reason']='Duplicate shorter phrase covered by a corroborated complete phrase'
+            elif text!=other and text not in other and other not in text and max(abs(a['start']-b['start']),abs(a['end']-b['end']))<=250:
+                blocked.update((i,j))
+                records[i]['reason']=records[j]['reason']='Contradictory wording at the same audio interval; listening required'
+    ordered=sorted((i for i in pool if i not in blocked),key=lambda i:(
+        records[i]['cue']['end'],records[i]['cue']['start'],normalize(records[i]['cue']['text'])))
+    states=[((0,0,0,0),[])]
+    for k,i in enumerate(ordered):
+        cue=records[i]['cue']
+        previous=max((j+1 for j in range(k) if records[ordered[j]]['cue']['end']<=cue['start']),default=0)
+        score,path=states[previous]
+        complete=records[i]['verification']['alignment']['bounds'].get('word_timing_complete',True)
+        weight=(len(normalize(cue['text'])),int(complete),records[i].get('confidence') or 0,-(cue['end']-cue['start']))
+        take=(tuple(a+b for a,b in zip(score,weight)),path+[i])
+        states.append(take if take[0]>states[-1][0] else states[-1])
+    selected=set(states[-1][1])
+    for i in pool:
+        if i not in selected and i not in blocked:
+            records[i]['reason']='Corroborated phrase conflicts in time with selected coverage; retained for listening'
+    return selected
+
+
 def recover_gaps(base, proposals, peers, baseline_model, auxiliary_model):
     """Accept isolated verbatim lines corroborated by distinct audio decoders."""
     result=deepcopy(base);result.name='Pipeline • short-chunk coverage'
@@ -59,6 +96,8 @@ def recover_gaps(base, proposals, peers, baseline_model, auxiliary_model):
     records=[]
     for proposal in proposals:
         cue=proposal['cue'];peer=peers.get(proposal['window'],{})
+        verification=proposal.get('verification',{})
+        focused=verification.get('version')==2
         matches=[s for s in peer.get('track',{}).get('segments',[])
                  if normalize(s['text'])==normalize(cue['text']) and _near(cue,s)
                  and abs(s['start']-cue['start'])<=750 and abs(s['end']-cue['end'])<=750]
@@ -66,17 +105,26 @@ def recover_gaps(base, proposals, peers, baseline_model, auxiliary_model):
         eligible=(peer.get('usable',False) and bool(matches)
                   and isinstance(score,(int,float)) and math.isfinite(score) and score>=.8
                   and str(baseline_model).replace('\\','/').casefold()!=str(auxiliary_model).replace('\\','/').casefold())
+        if focused:
+            peer_model=verification.get('peer_model','')
+            eligible=(verification.get('text_confirmed',False) and verification.get('alignment_valid',False)
+                and bool(peer_model) and str(baseline_model).replace('\\','/').casefold()!=str(peer_model).replace('\\','/').casefold()
+                and type(score) in (int,float) and math.isfinite(score) and score>=.8
+                and not any(cue['start']<s.end and cue['end']>s.start for s in base.segments))
+            matches=[s for s in peer.get('track',{}).get('segments',[]) if normalize(cue['text']) in normalize(s['text'])]
         records.append({**deepcopy(proposal),'peer_matches':deepcopy(matches),'applied':False,
                         'baseline_model':baseline_model,'corroborating_model':peer.get('model',auxiliary_model),
                         'peer_directory':peer.get('directory',''),
-                        'eligible':eligible,'reason':'Unconfirmed missing-line hypothesis; listening required'})
+                        'eligible':eligible,'reason':verification.get('reason','Unconfirmed missing-line hypothesis; listening required')})
     # Duplicate overlap nominations are one event. Conflicting wording/timing
     # never wins by iteration order or by an auxiliary majority.
-    selected=[]
-    for record in records:
+    selected=[];focused_selection=select_focused(records)
+    for index,record in enumerate(records):
         if not record['eligible']:continue
         cue=record['cue']
-        conflicts=[r for r in records if r is not record and
+        focused=record.get('verification',{}).get('version')==2
+        if focused and index not in focused_selection:continue
+        conflicts=[] if focused else [r for r in records if r is not record and
                    cue['start']<r['cue']['end'] and cue['end']>r['cue']['start'] and
                    (normalize(cue['text'])!=normalize(r['cue']['text']) or not _near(cue,r['cue']))]
         if conflicts:
@@ -86,8 +134,12 @@ def recover_gaps(base, proposals, peers, baseline_model, auxiliary_model):
         added=Segment(cue['start'],cue['end'],cue['text'],source='asr-coverage-consensus',
                       parents=[cue['id']]+[s['id'] for s in record['peer_matches']],
                       notes=['Coverage: missing line corroborated by two audio models; listening required'])
+        if focused:
+            added.parents=list(dict.fromkeys([s['source_cue']['id'] for s in record.get('sources',[])]+added.parents))
+            hold=record['verification']['alignment']['bounds']['display_hold_ms']
+            if hold:added.notes.append(f'Coverage: display hold {hold} ms after measured speech end')
         result.segments.append(added)
-        record.update(applied=True,after=asdict(added),reason='Distinct audio models agree on an isolated missing line')
+        record.update(applied=True,after=asdict(added),reason='Distinct audio models agree; separate measured word alignment fits the baseline gap' if focused else 'Distinct audio models agree on an isolated missing line')
         selected.append(record)
     result.segments.sort(key=lambda cue:(cue.start,cue.end))
     return {'track':asdict(result),'candidates':records,'changes':[r for r in records if r['applied']],
@@ -97,6 +149,9 @@ def recover_gaps(base, proposals, peers, baseline_model, auxiliary_model):
 
 def search_coverage(runner, folder, base, audio):
     """Resumable bounded batches; no full-film duplicate WAVs or model downloads."""
+    if runner.config['asr_coverage'].get('version',1)==2:
+        from .coverage_focus import search_focused
+        return search_focused(runner,folder,base,audio)
     from .pipeline_worker import read_json, write_json
     from .source_review_v3 import decode_batch
     options=runner.config['asr_coverage'];start=runner.config['start'];end=start+runner.config['duration']

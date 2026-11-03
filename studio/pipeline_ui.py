@@ -150,9 +150,9 @@ class PipelinePanel(QWidget):
         self.scan_first.setToolTip('Find disagreements even when the baseline is confident. Adds a full auxiliary pass and may select more retries. Complete scan cues are reused; the retry-window limit bounds further work.')
         layout.addWidget(self.scan_first)
         coverage_row=QHBoxLayout()
-        self.coverage=QCheckBox('Search for missed lines • short overlapping audio chunks (experimental)')
-        self.coverage.setChecked(False)
-        self.coverage.setToolTip('Runs Large V3 without VAD on every short chunk, then asks another audio model to confirm gap candidates. Adds work for the whole recording. Original cues and times survive; shared hallucinations remain possible.')
+        self.coverage=QCheckBox('Recover missed lines • short overlapping audio chunks')
+        self.coverage.setChecked(True)
+        self.coverage.setToolTip('Scans short chunks without VAD, checks additional phrases with another audio model, then aligns confirmed text separately. Adds work for the whole recording. Original cues/times survive; shared recognition errors remain possible.')
         self.coverage_seconds=QSpinBox();self.coverage_seconds.setRange(15,120);self.coverage_seconds.setValue(30);self.coverage_seconds.setSuffix(' s per chunk')
         coverage_row.addWidget(self.coverage,1);coverage_row.addWidget(self.coverage_seconds);layout.addLayout(coverage_row)
         third_row=QHBoxLayout()
@@ -432,7 +432,7 @@ class PipelinePanel(QWidget):
             self.transcription_only.setChecked(prefs.get('transcription_only',not bool(prefs.get('translations'))))
             self.retry_clips.setChecked(prefs.get('retry_clips',True))
             self.scan_first.setChecked(prefs.get('scan_first',True))
-            self.coverage.setChecked(prefs.get('asr_coverage',False))
+            self.coverage.setChecked(prefs.get('asr_coverage',True))
             self.coverage_seconds.setValue(prefs.get('coverage_seconds',30))
             self.batch_retries.setChecked(prefs.get('batch_retries',True))
             self.jp_context_review.setChecked(prefs.get('jp_context_review',True))
@@ -500,7 +500,7 @@ class PipelinePanel(QWidget):
             if context and not self.judge.currentData(): raise ValueError('Select a model for Japanese context review, or disable that review.')
             config.update(review='rules',jp_context_review=context,autosplit=False,
                 asr_timing_review={'enabled':True,'max_targets':8,'display_fallback':True},
-                asr_coverage={'enabled':asr[0]['engine']!=0 and self.retry_clips.isChecked() and self.coverage.isChecked(),
+                asr_coverage={'enabled':asr[0]['engine']!=0 and self.retry_clips.isChecked() and self.coverage.isChecked(),'version':2,
                               'chunk_ms':self.coverage_seconds.value()*1000,'padding_ms':3000},
                 adaptive_retry={'enabled':self.retry_clips.isChecked() and self.adaptive_audio.isChecked() and bool(auxiliary),'max_targets':self.adaptive_limit.value()},
                 jp_alignment={'enabled':self.align_audio.isChecked(),'split':self.align_split.isChecked(),'max_shift_ms':1500},
@@ -776,7 +776,7 @@ class PipelinePanel(QWidget):
             peer=result.get('peers',{}).get(record['window'],{})
             nearby=[s['text'] for s in peer.get('track',{}).get('segments',[]) if s['start']<cue['end'] and s['end']>cue['start']]
             values=[f'{cue["start"]/1000:.2f}–{cue["end"]/1000:.2f} s',cue['text'],
-                    '\n'.join(nearby) or peer.get('error','No matching line'),
+                    peer.get('text') or '\n'.join(nearby) or peer.get('error','No matching line'),
                     ('ADDED • ' if record['applied'] else 'REVIEW • ')+record['reason']]
             for col,value in enumerate(values):
                 item=QTableWidgetItem(value);item.setToolTip(value);table.setItem(row,col,item)

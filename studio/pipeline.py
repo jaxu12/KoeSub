@@ -98,6 +98,7 @@ def validate_config(config):
     coverage=config.get('asr_coverage',{})
     if not isinstance(coverage,dict) or type(coverage.get('enabled',False)) is not bool:raise ValueError('Invalid coverage option')
     if coverage.get('enabled'):
+        if type(coverage.get('version',1)) is not int or coverage.get('version',1) not in (1,2):raise ValueError('Invalid coverage version')
         auxiliary=config.get('retry_asr',{}).get('auxiliary')
         if (not jp_only or config.get('source_review_version')!=3 or not config.get('retry_asr',{}).get('enabled')
                 or len(config['asr'])!=1 or config['asr'][0]['engine']!=2
@@ -199,6 +200,8 @@ def asset_identities(config):
         if (item['engine']==1 or config.get('source_guard') and any(tag in Path(item['model']).name.lower() for tag in ('kotoba','anime-whisper'))) and settings['crisp_aligner']:
             paths.append(settings['crisp_aligner'])
     if config.get('transcription_only'):
+        if config.get('asr_coverage',{}).get('enabled') and config['asr_coverage'].get('version',1)==2:
+            paths += [settings['crisp_aligner'],settings['crisp_exe']]
         if config.get('jp_alignment',{}).get('enabled'):paths += [settings['crisp_aligner'],settings['crisp_exe']]
         auxiliary=config.get('retry_asr',{}).get('auxiliary')
         if config.get('retry_asr',{}).get('enabled'):

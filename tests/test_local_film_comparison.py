@@ -131,7 +131,7 @@ def test_full_film_mode_uses_complete_existing_japanese_policy_and_restores_cont
     def forbidden(*args):raise AssertionError('Full JP must not select the standalone native preset')
     monkeypatch.setattr(Settings,'use_subtitle_edit_whisper',forbidden)
     cfg=film_config(media,7200000,settings,tmp_path,True);validate_config(cfg)
-    assert [s['id'] for s in plan(cfg)]==['audio','asr-0','asr-timing-review','asr-scan','asr-retry','jp-review',
+    assert [s['id'] for s in plan(cfg)]==['audio','asr-0','asr-timing-review','asr-coverage','asr-scan','asr-retry','jp-review',
         'jp-context','jp-adaptive','jp-align','jp-layout','jp-export']
     assert cfg['translations']==[] and cfg['judge_model']=='local-review.gguf'
     assert cfg['retry_asr']['max_targets']==12 and cfg['retry_asr']['third_max_targets']==6
@@ -145,6 +145,7 @@ def test_full_film_mode_uses_complete_existing_japanese_policy_and_restores_cont
     prefs=ProjectStore(Path(read_json(tmp_path/'ui/last_project.json')['path'])).load().pipeline_prefs
     assert prefs['retry_clips'] and prefs['jp_context_review'] and prefs['adaptive_audio'] and prefs['align_audio']
     assert prefs['retry_third_model']==cfg['retry_asr']['third']['model']
+    assert prefs['asr_coverage'] and prefs['coverage_seconds']==30 and cfg['asr_coverage']['version']==2
 
 
 @pytest.mark.parametrize('field',['crisp_gpu_backend','llm_device'])

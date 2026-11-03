@@ -10,7 +10,7 @@ from .asr_retry import retry_windows, suspects
 from .asr_review import review_fragments
 from .pipeline import digest, track_from, clone_track
 from .storage import Model
-from .core import uid
+from .core import uid, Segment, Track, normalize
 
 
 def preserve_uncommitted_outputs(folder):
@@ -19,7 +19,7 @@ def preserve_uncommitted_outputs(folder):
     Archive those hypotheses before decoding again, so an input that fails to
     produce output cannot accidentally inherit an earlier attempt's SRT.
     """
-    files=list(folder.glob('*.srt'))+[folder/name for name in ('transcript.json','engine.log','transport.json') if (folder/name).is_file()]
+    files=list(folder.glob('*.srt'))+[folder/name for name in ('transcript.json','transcript.txt','engine.log','transport.json') if (folder/name).is_file()]
     if files:
         archive=folder/'previous-uncommitted'/uid();archive.mkdir(parents=True)
         for path in files:path.replace(archive/path.name)
@@ -51,7 +51,39 @@ def unresolved_windows(base, windows, confidence, model):
     return [w for w in windows if w['id'] in unresolved and not protected.intersection(w['cue_ids'])]
 
 
-def decode_batch(runner, root, item, jobs):
+def parse_text_result(folder, start, end):
+    """Read decoding evidence without claiming that ASR offsets are alignment.
+
+    Text-only verification must not require an auxiliary forced aligner or
+    silently turn its nominal chunk offsets into exported speech timestamps.
+    """
+    from .pipeline_worker import read_json, AsrQualityError
+    from .asr_retry import token_confidence
+    try:
+        document=read_json(folder/'transcript.json')
+        entries=document['transcription']
+        if not isinstance(entries,list):raise ValueError('Invalid transcription list')
+        cues=[]
+        for entry in entries:
+            text=entry['text']
+            if not isinstance(text,str) or '\ufffd' in text or len(text)>20000:raise ValueError('Invalid ASR text')
+            if not normalize(text):continue
+            offsets=entry.get('offsets',{})
+            a,b=offsets.get('from'),offsets.get('to')
+            valid=type(a) is int and type(b) is int and 0<=a<b<=end-start
+            cue=Segment(start+a if valid else start,start+b if valid else end,text,source=str(folder))
+            if not valid:cue.notes.append('Coverage: targeting uses crop bounds; native offsets invalid')
+            cues.append(cue)
+        track=Track('Audio decoding evidence • offsets unverified',cues)
+        return {'usable':True,'text_usable':True,'timing_usable':False,
+                'text':'\n'.join(cue.text for cue in cues),'track':asdict(track),
+                'confidence':token_confidence(document,track,start),'document':document,
+                'scope':'ASR text only; nominal offsets are targeting hints, not verified speech timing'}
+    except (KeyError,TypeError,ValueError,UnicodeError,OSError) as exc:
+        raise AsrQualityError('Invalid text-only ASR output: '+str(exc)) from exc
+
+
+def decode_batch(runner, root, item, jobs, *, text_only=False):
     """One native process, sequential inputs, the same strict CLI output parser.
 
     Return a per-clip result; elapsed time is amortized, never presented as a
@@ -68,6 +100,13 @@ def decode_batch(runner, root, item, jobs):
     fn={1:crisp_command,2:whisper_cpp_command,3:reazonspeech_command}[item['engine']]
     first=jobs[0]
     args=fn(runner.settings,model,first['audio'],first['folder'],item['vad'],help_text)
+    if text_only:
+        for flag in ('--output-srt','--force-aligner'):
+            if flag in args:args.remove(flag)
+        if '--aligner-model' in args:
+            at=args.index('--aligner-model');del args[at:at+2]
+        if '--output-json' in args:args[args.index('--output-json')]='--output-json-full'
+        validate_flags(help_text,args)
     if item.get('vad_options'):
         values=item['vad_options']
         if not item['vad'] or set(values)!={'speech_pad_ms','min_silence_ms'} or any(
@@ -91,6 +130,7 @@ def decode_batch(runner, root, item, jobs):
     if any(s in log.lower() for s in ('out of memory','allocation failed','falling back')):
         raise ValueError('ASR reported a device or memory failure; pipeline stopped. See engine.log.')
     record={'mode':'grouped-cli','model':item['model'],'device':runner.settings.crisp_gpu_backend,
+            'text_only':text_only,
             'seconds':elapsed,'clips':len(jobs),'inputs':[str(j['audio']) for j in jobs],
             'failure':failure,'clip_seconds':'Amortized batch wall time, including model load; not individual latency'}
     write_json(root/'batch.json',record)
@@ -101,8 +141,11 @@ def decode_batch(runner, root, item, jobs):
             'engine_log':str(root/'engine.log'),'input':str(job['audio']),
             'range_start':job['start'],'range_end':job['end']})
         try:
-            if not list(job['folder'].glob('*.srt')): raise AsrQualityError(failure or 'Batch did not produce this clip')
-            value=runner.parse_asr(job['folder'],item,clip_log,job['start'],job['end']-job['start'])
+            if text_only:
+                value=parse_text_result(job['folder'],job['start'],job['end'])
+            else:
+                if not list(job['folder'].glob('*.srt')): raise AsrQualityError(failure or 'Batch did not produce this clip')
+                value=runner.parse_asr(job['folder'],item,clip_log,job['start'],job['end']-job['start'])
             scores=list(value.get('confidence',{}).values())
             value.update(usable=True,mean_confidence=sum(s['mean'] for s in scores)/len(scores) if scores else None)
         except AsrQualityError as exc:
