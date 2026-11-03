@@ -424,6 +424,13 @@ class PipelineRunner:
             self.state['asr_timing_repairs']=len(timing['changes'])
             self.state['asr_timing_estimated']=timing.get('estimated_display_repairs',0)
         base=track_from(raw['track']);final=base
+        if self.config.get('asr_coverage',{}).get('enabled'):
+            from .asr_coverage import search_coverage
+            coverage=self.stage('asr-coverage',lambda f:search_coverage(self,f,base,audio))
+            base=track_from(coverage['track']);final=base
+            self.state['asr_coverage_added']=len(coverage['changes'])
+            self.state['asr_coverage_unresolved']=coverage['unresolved']
+            self.state['asr_coverage_failed']=len(coverage['failed_windows'])
         scan=None
         options=self.config.get('retry_asr',{})
         self.state['asr_failures']=[]
@@ -727,6 +734,8 @@ class PipelineRunner:
         report['manual_reviews']=self.state.get('manual_reviews',[])
         timing_path=self.folder/'asr-timing-review/result.json'
         report['asr_timing_review']=read_json(timing_path) if timing_path.is_file() else None
+        coverage_path=self.folder/'asr-coverage/result.json'
+        report['asr_coverage']=read_json(coverage_path) if coverage_path.is_file() else None
         repair_result=self.folder/'repair/result.json'
         report['review_changes']=read_json(repair_result).get('changes',[]) if repair_result.is_file() else []
         report['review_changed_cues']=len(report['review_changes'])
@@ -750,6 +759,9 @@ class PipelineRunner:
             report['scope']='Japanese transcription only; optional JP context review; no translation' if self.config.get('jp_context_review') else 'Japanese transcription only; no translation, LLM or English review'
             report['limitation']='Confidence and local retry agreement are diagnostic signals, not audio ground truth. Disputed phrases retain the baseline.'
         if report['asr_failures']: report['status']='needs_review'
+        coverage=report['asr_coverage']
+        coverage_review=bool(coverage and (coverage['candidates'] or coverage['failed_windows']))
+        if coverage_review:report['status']='needs_review'
         write_json(output/'report.json',report)
         lines = ['# Raport pipeline',f'Napisy: {len(rows)}. Z ostrzeżeniami: {report["warnings"]}.',
                  f'Review: faktycznie zmieniono {report["review_changed_cues"]} napisów EN.',
@@ -765,12 +777,16 @@ class PipelineRunner:
         if report['asr_timing_review']:
             lines += [f'Automatic ASR timing review: {len(report["asr_timing_review"]["changes"])} repairs; raw text and original hypotheses retained.']
             lines += [f'Unverified display timing recoveries: {report["asr_timing_review"].get("estimated_display_repairs",0)}; these are not measured speech boundaries.']
+        if coverage:
+            lines += [f'Short-chunk coverage: {len(coverage["windows"])} windows; {len(coverage["changes"])} added lines; '
+                      f'{coverage["unresolved"]} unresolved hypotheses; {len(coverage["failed_windows"])} rejected clip outputs. '
+                      'Rejected clips can include silence; these counts are not verified omission/error counts.']
         lines += [f'- #{r["index"]+1}: '+ '; '.join(r['issues']) for r in rows if r['issues']]
         lines += ['Eksport zablokowany: '+message for message in blocked]
         lines += ['Odrzucony ASR: '+f['name']+' • '+f['reason'] for f in report['asr_failures']]
         atomic_text(output/'report.md','\n\n'.join(lines))
         return {'paths':exported+[str(output/'report.json'),str(output/'report.md')],
-                'warnings':report['warnings'],'blocked_exports':blocked,'degraded_asr':bool(report['asr_failures'])}
+                'warnings':report['warnings'],'blocked_exports':blocked,'degraded_asr':bool(report['asr_failures']) or coverage_review}
 
     def pause_for_review(self,key,track):
         if not self.config.get('pause_uncertain') or key in self.state.get('approved_stages',[]): return False

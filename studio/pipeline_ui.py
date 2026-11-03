@@ -149,6 +149,12 @@ class PipelinePanel(QWidget):
         self.scan_first.setChecked(True)
         self.scan_first.setToolTip('Find disagreements even when the baseline is confident. Adds a full auxiliary pass and may select more retries. Complete scan cues are reused; the retry-window limit bounds further work.')
         layout.addWidget(self.scan_first)
+        coverage_row=QHBoxLayout()
+        self.coverage=QCheckBox('Search for missed lines • short overlapping audio chunks (experimental)')
+        self.coverage.setChecked(False)
+        self.coverage.setToolTip('Runs Large V3 without VAD on every short chunk, then asks another audio model to confirm gap candidates. Adds work for the whole recording. Original cues and times survive; shared hallucinations remain possible.')
+        self.coverage_seconds=QSpinBox();self.coverage_seconds.setRange(15,120);self.coverage_seconds.setValue(30);self.coverage_seconds.setSuffix(' s per chunk')
+        coverage_row.addWidget(self.coverage,1);coverage_row.addWidget(self.coverage_seconds);layout.addLayout(coverage_row)
         third_row=QHBoxLayout()
         self.third_label=text_label('Third ASR • unresolved audio only');third_row.addWidget(self.third_label)
         self.retry_third=QComboBox()
@@ -197,6 +203,8 @@ class PipelinePanel(QWidget):
         refinement_row=QHBoxLayout()
         self.adaptive_results=QPushButton('Adaptive ASR comparison');self.alignment_results=QPushButton('Timing changes')
         refinement_row.addWidget(self.adaptive_results);refinement_row.addWidget(self.alignment_results);layout.addLayout(refinement_row)
+        self.coverage_results=QPushButton('Missing-line candidates');layout.addWidget(self.coverage_results)
+        self.coverage_results.clicked.connect(self.show_coverage_results)
         self.adaptive_results.clicked.connect(self.show_adaptive_results);self.alignment_results.clicked.connect(self.show_alignment_results)
         layout.addWidget(self.summary)
         self.stages = QTableWidget(0,3)
@@ -210,7 +218,7 @@ class PipelinePanel(QWidget):
         self.inputs += [self.preset,self.backend,self.review,self.review_action,self.asr_count,self.en_count,self.judge,
                         self.start,self.length,self.autosplit,self.export,self.export_format,self.sound,self.pause,self.film_context,self.continue_asr,self.readability,
                         self.transcription_only,self.retry_clips,self.retry_aux,self.retry_context,self.retry_limit,self.scan_first,
-                        self.retry_third,self.third_limit,self.batch_retries,self.jp_context_review,
+                        self.retry_third,self.third_limit,self.batch_retries,self.jp_context_review,self.coverage,self.coverage_seconds,
                         self.adaptive_audio,self.adaptive_limit,self.align_audio,self.align_split]
         self.asr_count.valueChanged.connect(self.show_rows)
         self.en_count.valueChanged.connect(self.show_rows)
@@ -224,6 +232,7 @@ class PipelinePanel(QWidget):
         self.retry_clips.toggled.connect(self.update_scope)
         self.jp_context_review.toggled.connect(self.update_scope)
         self.align_audio.toggled.connect(self.update_scope)
+        self.coverage.toggled.connect(self.update_scope)
         self.apply_preset(5)
 
     def update_scope(self,*_):
@@ -252,6 +261,9 @@ class PipelinePanel(QWidget):
         self.retry_aux.setEnabled(jp and self.retry_clips.isChecked() and not self.owner.busy)
         self.retry_context.setEnabled(jp and self.retry_clips.isChecked() and not self.owner.busy)
         self.retry_limit.setEnabled(jp and self.retry_clips.isChecked() and not self.owner.busy)
+        self.coverage.setVisible(jp);self.coverage_seconds.setVisible(jp)
+        self.coverage.setEnabled(jp and not native and self.retry_clips.isChecked() and not self.owner.busy)
+        self.coverage_seconds.setEnabled(self.coverage.isEnabled() and self.coverage.isChecked())
         for widget in (self.third_label,self.retry_third,self.third_limit,self.batch_retries,self.jp_context_review):widget.setVisible(jp)
         for widget in (self.retry_third,self.third_limit,self.batch_retries):widget.setEnabled(jp and self.retry_clips.isChecked() and not self.owner.busy)
         for widget in (self.adaptive_audio,self.adaptive_limit,self.align_audio,self.align_split):widget.setVisible(jp)
@@ -274,6 +286,7 @@ class PipelinePanel(QWidget):
             jp_alignment={'enabled':self.transcription_only.isChecked() and self.align_audio.isChecked()})
         if native:config.update(source_review_version=None,jp_context_review=False,retry_asr={'enabled':False},adaptive_retry={'enabled':False})
         config['asr_timing_review']={'enabled':self.transcription_only.isChecked(),'max_targets':8,'display_fallback':True}
+        config['asr_coverage']={'enabled':self.transcription_only.isChecked() and not native and self.retry_clips.isChecked() and self.coverage.isChecked()}
         steps = plan(config)
         self.stages.setRowCount(len(steps))
         for row,stage in enumerate(steps):
@@ -419,6 +432,8 @@ class PipelinePanel(QWidget):
             self.transcription_only.setChecked(prefs.get('transcription_only',not bool(prefs.get('translations'))))
             self.retry_clips.setChecked(prefs.get('retry_clips',True))
             self.scan_first.setChecked(prefs.get('scan_first',True))
+            self.coverage.setChecked(prefs.get('asr_coverage',False))
+            self.coverage_seconds.setValue(prefs.get('coverage_seconds',30))
             self.batch_retries.setChecked(prefs.get('batch_retries',True))
             self.jp_context_review.setChecked(prefs.get('jp_context_review',True))
             self.adaptive_audio.setChecked(prefs.get('adaptive_audio',True));self.adaptive_limit.setValue(prefs.get('adaptive_limit',4))
@@ -485,6 +500,8 @@ class PipelinePanel(QWidget):
             if context and not self.judge.currentData(): raise ValueError('Select a model for Japanese context review, or disable that review.')
             config.update(review='rules',jp_context_review=context,autosplit=False,
                 asr_timing_review={'enabled':True,'max_targets':8,'display_fallback':True},
+                asr_coverage={'enabled':asr[0]['engine']!=0 and self.retry_clips.isChecked() and self.coverage.isChecked(),
+                              'chunk_ms':self.coverage_seconds.value()*1000,'padding_ms':3000},
                 adaptive_retry={'enabled':self.retry_clips.isChecked() and self.adaptive_audio.isChecked() and bool(auxiliary),'max_targets':self.adaptive_limit.value()},
                 jp_alignment={'enabled':self.align_audio.isChecked(),'split':self.align_split.isChecked(),'max_shift_ms':1500},
                 judge_model=self.judge.currentData() if context else '',
@@ -534,6 +551,7 @@ class PipelinePanel(QWidget):
             owner.project.pipeline_prefs.update(transcription_only=config['transcription_only'],retry_clips=self.retry_clips.isChecked(),
                 retry_context=self.retry_context.value(),retry_limit=self.retry_limit.value(),scan_first=self.scan_first.isChecked())
             owner.project.pipeline_prefs['retry_aux_model']=(self.retry_aux.currentData() or {}).get('model')
+            owner.project.pipeline_prefs.update(asr_coverage=config.get('asr_coverage',{}).get('enabled',False),coverage_seconds=self.coverage_seconds.value())
             owner.project.pipeline_prefs.update(retry_third_model=(self.retry_third.currentData() or {}).get('model'),
                 third_limit=self.third_limit.value(),batch_retries=self.batch_retries.isChecked(),jp_context_review=self.jp_context_review.isChecked())
             owner.project.pipeline_prefs.update(adaptive_audio=self.adaptive_audio.isChecked(),adaptive_limit=self.adaptive_limit.value(),
@@ -609,6 +627,8 @@ class PipelinePanel(QWidget):
             if state['config'].get('jp_alignment',{}).get('enabled'):edits+=f' • aligned: {state.get("jp_retimed_cues",0)} • split: {state.get("jp_split_cues",0)}'
             if state['config'].get('asr_timing_review',{}).get('enabled'):edits+=f' • timing repairs: {state.get("asr_timing_repairs",0)}'
             if state.get('asr_timing_estimated'):edits+=f' • unverified display timing: {state["asr_timing_estimated"]}'
+            if state['config'].get('asr_coverage',{}).get('enabled'):
+                edits+=f' • recovered lines: {state.get("asr_coverage_added",0)} • unconfirmed: {state.get("asr_coverage_unresolved",0)} • rejected clips: {state.get("asr_coverage_failed",0)}'
         if rejected: edits+=f' • odrzucone ASR: {len(state.get("asr_failures",[]))}'
         action='sprawdź i popraw' if state['config'].get('review') in {'balanced','deep'} and repairs_enabled(state['config']) else 'sprawdzanie'
         self.summary.setText(f'Etapy: {done}/{len(state["stages"])} • {status} • {action}{edits} • '
@@ -736,6 +756,35 @@ class PipelinePanel(QWidget):
         phrases.clicked.connect(lambda:self.show_source_review(result));layout.addWidget(phrases)
         buttons=QDialogButtonBox(QDialogButtonBox.StandardButton.Close);buttons.rejected.connect(dialog.reject);layout.addWidget(buttons)
         dialog.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose);dialog.show();self.adaptive_dialog=dialog
+
+    def show_coverage_results(self):
+        from PySide6.QtWidgets import QDialog,QDialogButtonBox
+        job=self.last_job()
+        if not job:return
+        path=Path(job['manifest']).parent/'asr-coverage/result.json'
+        if not path.is_file():return
+        result=read_json(path);records=result['candidates']
+        dialog=QDialog(self.owner);dialog.setWindowTitle('Short-chunk coverage • missing-line candidates');dialog.resize(1250,650)
+        layout=QVBoxLayout(dialog)
+        layout.addWidget(text_label(f'Added: {len(result["changes"])}; unresolved hypotheses: {result["unresolved"]}; '
+            f'rejected clip outputs: {len(result["failed_windows"])}. Model agreement is not verified accuracy. Double-click to listen.'))
+        table=QTableWidget(len(records),4);table.setHorizontalHeaderLabels(['Time','Short-context hypothesis','Other model nearby text','Decision'])
+        table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers);table.setWordWrap(True)
+        table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        for row,record in enumerate(records):
+            cue=record['cue']
+            peer=result.get('peers',{}).get(record['window'],{})
+            nearby=[s['text'] for s in peer.get('track',{}).get('segments',[]) if s['start']<cue['end'] and s['end']>cue['start']]
+            values=[f'{cue["start"]/1000:.2f}–{cue["end"]/1000:.2f} s',cue['text'],
+                    '\n'.join(nearby) or peer.get('error','No matching line'),
+                    ('ADDED • ' if record['applied'] else 'REVIEW • ')+record['reason']]
+            for col,value in enumerate(values):
+                item=QTableWidgetItem(value);item.setToolTip(value);table.setItem(row,col,item)
+            table.setRowHeight(row,100)
+        table.cellDoubleClicked.connect(lambda row,col:self.owner.play_interval(records[row]['cue']['start'],records[row]['cue']['end']))
+        layout.addWidget(table)
+        buttons=QDialogButtonBox(QDialogButtonBox.StandardButton.Close);buttons.rejected.connect(dialog.reject);layout.addWidget(buttons)
+        dialog.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose);dialog.show();self.coverage_dialog=dialog
 
     def show_alignment_results(self):
         from PySide6.QtWidgets import QDialog,QDialogButtonBox

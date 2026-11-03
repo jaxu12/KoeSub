@@ -53,6 +53,8 @@ def plan(config):
         if config['asr'][0].get('engine')==0:stages[1]=('asr-0','JP baseline • Faster-Whisper XXL • VAD')
         if config.get('asr_timing_review',{}).get('enabled'):
             stages.append(('asr-timing-review','Automatic timing review • repair invalid ASR boundaries'))
+        if config.get('asr_coverage',{}).get('enabled'):
+            stages.append(('asr-coverage','Short-chunk coverage • recover corroborated missing lines'))
         if config.get('retry_asr',{}).get('enabled'):
             if config['retry_asr'].get('scan_first') and config['retry_asr'].get('auxiliary'):
                 stages.append(('asr-scan','Auxiliary ASR scan • detect disagreements'))
@@ -93,6 +95,18 @@ def validate_config(config):
     if config.get('source_review_version') not in (None,1,2,3):
         raise ValueError('Nieobsługiwana wersja review oryginału JP.')
     jp_only=config.get('transcription_only',False)
+    coverage=config.get('asr_coverage',{})
+    if not isinstance(coverage,dict) or type(coverage.get('enabled',False)) is not bool:raise ValueError('Invalid coverage option')
+    if coverage.get('enabled'):
+        auxiliary=config.get('retry_asr',{}).get('auxiliary')
+        if (not jp_only or config.get('source_review_version')!=3 or not config.get('retry_asr',{}).get('enabled')
+                or len(config['asr'])!=1 or config['asr'][0]['engine']!=2
+                or not auxiliary or auxiliary['engine'] not in (1,2,3)
+                or Path(auxiliary['model']).resolve()==Path(config['asr'][0]['model']).resolve()):
+            raise ValueError('Short-chunk coverage requires a GGML baseline and a distinct auxiliary ASR model')
+        for key,low,high,default in [('chunk_ms',15000,120000,30000),('padding_ms',1000,10000,3000)]:
+            value=coverage.get(key,default)
+            if type(value) is not int or not low<=value<=high:raise ValueError('Invalid coverage limit: '+key)
     timing=config.get('asr_timing_review',{})
     if not isinstance(timing,dict) or type(timing.get('enabled',False)) is not bool:raise ValueError('Invalid ASR timing review option')
     if 'display_fallback' in timing and type(timing['display_fallback']) is not bool:raise ValueError('Invalid display timing fallback option')

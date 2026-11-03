@@ -129,6 +129,8 @@ def review_track(track: Track | None, settings: ReviewSettings, media_duration=0
         warnings = []
         if segment.review_status!='reviewed' and any(note.startswith('Timing review: estimated display timing') for note in segment.notes):
             warnings.append('Estimated display timing; speech boundaries require listening')
+        if segment.review_status!='reviewed' and any(note.startswith('Coverage: missing line corroborated') for note in segment.notes):
+            warnings.append('Recovered missing-line hypothesis; verify against audio')
         if segment.start < 0 or duration <= 0:
             warnings.append('Nieprawidłowy czas')
         elif duration < settings.min_ms:

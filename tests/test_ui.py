@@ -250,6 +250,12 @@ def test_jp_scope_needs_no_translator_and_fixes_baseline_vad(window,tmp_path):
     assert config['source_review_version']==3 and config['retry_asr']['scan_first']
     assert config['retry_asr']['batch_retries'] and not config['jp_context_review']
     assert [s['id'] for s in plan(config)]==['audio','asr-0','asr-timing-review','asr-scan','asr-retry','jp-review','jp-adaptive','jp-layout','jp-export']
+    p.coverage.setChecked(True);p.coverage_seconds.setValue(15)
+    covered=p.config('covered')
+    assert covered['asr_coverage']=={'enabled':True,'chunk_ms':15000,'padding_ms':3000}
+    assert [s['id'] for s in plan(covered)].index('asr-coverage')==3
+    p.retry_clips.setChecked(False)
+    assert not p.config('disabled')['asr_coverage']['enabled'] and not p.coverage.isEnabled()
 
 
 def test_third_asr_default_and_explicit_disabled_survive_model_refresh(window,tmp_path):
@@ -378,7 +384,7 @@ def test_pipeline_saved_preferences_restore_models_profiles_and_options(window):
     panel.judge.addItem('Qwen','local.gguf')
     prefs = {'asr_count':1,'en_count':1,'review':'deep','backend':'embedded','start':2,'length':15,
              'asr':[{**model,'vad':False}],'translations':[{'model':'local.gguf','variant':3}],
-             'judge_model':'local.gguf','autosplit':True,'sound':True,'export_srt':False}
+             'judge_model':'local.gguf','autosplit':True,'sound':True,'export_srt':False,'asr_coverage':True,'coverage_seconds':15}
     w.project = Project(pipeline_prefs=prefs)
     w.project.add_track(Track('test',[Segment(0,2000,'はい')]))
     w.changed('save pipeline preferences')
@@ -386,6 +392,7 @@ def test_pipeline_saved_preferences_restore_models_profiles_and_options(window):
     assert panel.en_models[0].currentData()=='local.gguf' and panel.variants[0].currentData()==3
     assert panel.preset.currentIndex()==3
     assert panel.autosplit.isChecked() and panel.sound.isChecked() and not panel.export.isChecked()
+    assert panel.coverage.isChecked() and panel.coverage_seconds.value()==15
     assert ProjectStore(w.store.path).load().pipeline_prefs==prefs
 
 
